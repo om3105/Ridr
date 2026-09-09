@@ -1,0 +1,13 @@
+# macOS metadata
+.DS_Store
+
+# Local generation scripts, renders, caches, and exported planning/UI artifacts.
+# Markdown requirements under docs/ are the versioned planning source.
+/tmp/
+/output/
+
+# Local secrets; commit sanitized examples when configuration is introduced.
+.env
+.env.*
+!.env.example
+!.env.*.example
