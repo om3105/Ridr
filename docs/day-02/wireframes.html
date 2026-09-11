@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ridr — Day 2 wireframes</title>
+    <link rel="stylesheet" href="wireframes.css" />
+    <script src="wireframes.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#screen-title">Skip to phone screen</a>
+    <header class="studio-header">
+      <div class="brand">Ridr<span>DESIGN WORKSPACE</span></div>
+      <span class="milestone"
+        >DAY 02 <span aria-hidden="true">/</span> JOURNEYS & WIREFRAMES</span
+      >
+      <a href="README.md">Design handoff ↗</a>
+    </header>
+    <main class="studio">
+      <aside class="screen-browser" aria-label="Design review controls">
+        <p class="eyebrow">THE EXPERIENCE</p>
+        <h1>One ride.<br />Everyone in view.</h1>
+        <p class="intro">
+          Explore the proposed screens and the states that connect them.
+        </p>
+        <label class="control-label" for="role">Preview as</label>
+        <select id="role">
+          <option value="leader">Ride leader</option>
+          <option value="rider">Rider</option>
+          <option value="pillion">Pillion</option>
+        </select>
+        <nav id="screen-nav" aria-label="Wireframe screens"></nav>
+      </aside>
+      <section class="canvas" aria-label="Interactive phone wireframe">
+        <div class="mode-switch" role="group" aria-label="Display mode">
+          <button type="button" data-mode="light" aria-pressed="true">
+            Light
+          </button>
+          <button type="button" data-mode="sunlight" aria-pressed="false">
+            High visibility
+          </button>
+        </div>
+        <div class="phone" id="phone" data-mode="light">
+          <div class="statusbar" aria-hidden="true">
+            <span>9:41</span><span>▮▮▮ &nbsp; ▰</span>
+          </div>
+          <div id="screen" class="screen"></div>
+          <div class="home-indicator" aria-hidden="true"></div>
+        </div>
+        <p class="canvas-caption">
+          Interactive design only · No GPS, messages, or emergency calls
+        </p>
+      </section>
+      <aside class="inspector" aria-label="Screen notes and scenario controls">
+        <p class="eyebrow" id="screen-number"></p>
+        <h2 id="inspector-title"></h2>
+        <p id="screen-purpose"></p>
+        <div class="inspector-rule"></div>
+        <p class="eyebrow">TRY A STATE</p>
+        <label class="control-label" for="network">Connection</label>
+        <select id="network">
+          <option value="online">Online</option>
+          <option value="offline">Offline — never transmitted</option>
+          <option value="uncertain">Acknowledgement lost</option>
+        </select>
+        <label class="control-label" for="movement">Movement</label>
+        <select id="movement">
+          <option value="stopped">Stationary</option>
+          <option value="moving">Moving</option>
+          <option value="unknown">Speed unavailable</option>
+        </select>
+        <label class="control-label" for="scenario">Screen state</label>
+        <select id="scenario"></select>
+        <button type="button" class="reset-button" id="reset">
+          Reset this screen
+        </button>
+        <div class="inspector-rule"></div>
+        <p class="eyebrow">DESIGN NOTES</p>
+        <ul id="screen-notes"></ul>
+        <p class="reference" id="screen-reference"></p>
+        <p class="prototype-note">
+          The controls here select sample states. Phone buttons demonstrate
+          navigation and feedback; they do not implement the app. Maps, people,
+          and ride data are illustrative.
+        </p>
+      </aside>
+    </main>
+    <div
+      class="sr-only"
+      id="announcement"
+      role="status"
+      aria-live="polite"
+    ></div>
+    <noscript
+      ><p>
+        Enable JavaScript to navigate this local wireframe. Written journeys are
+        available in journeys.md.
+      </p></noscript
+    >
+  </body>
+</html>

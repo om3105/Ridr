@@ -4,7 +4,7 @@ Ridr is a planned iOS and Android app for group ride coordination: shared live l
 
 ## Current milestone
 
-Day 1 requirements planning is complete. The repository currently contains the product baseline and development workflow. Application initialization, dependency installation, and executable test/build tooling are later milestones.
+Day 1 requirements planning and Day 2 journey/wireframe design are complete. The repository contains the product baseline, a clickable browser design artifact, design checks, and the development workflow. Day 3 architecture and application initialization remain later milestones.
 
 The plan targets a 35-working-day beta, assuming two developers and part-time design/QA support. Subscription checkout is deferred to v1.1. Automatic crash detection is conditional on device and field validation and is not a promised production safety capability.
 
@@ -14,6 +14,9 @@ The plan targets a 35-working-day beta, assuming two developers and part-time de
 - [Scope, product decisions, and role permissions](docs/day-01/scope-and-decisions.md)
 - [Prioritized backlog and per-requirement acceptance criteria](docs/day-01/backlog.md)
 - [Acceptance scenarios and release gates](docs/day-01/acceptance-and-release.md)
+- [Day 2 design handoff and verification](docs/day-02/README.md)
+- [Clickable UI wireframes](docs/day-02/wireframes.html)
+- [User journeys and screen navigation](docs/day-02/journeys.md)
 
 These documents cover all 34 source functional requirements, 15 supporting items, and 25 planned acceptance scenarios. Planned checks are not represented as completed app tests.
 
@@ -25,7 +28,7 @@ The working proposal is React Native with Expo and TypeScript for mobile; NestJS
 
 Follow [AGENTS.md](AGENTS.md). Implement one logical milestone at a time, verify the actual change, inspect staged content, and create a specific truthful commit. Use real timestamps and preserve actual authorship. Do not manufacture work or history.
 
-There are currently no `npm test`, lint, or build scripts. For documentation changes, verify source requirement coverage, internal references/links, consistency, and Git whitespace checks. Add executable setup and test instructions when the corresponding tools are introduced.
+There are currently no application `npm test`, lint, or build scripts. The standalone Day 2 browser checks are documented in the [design handoff](docs/day-02/README.md#re-run-the-design-checks). They validate the design artifact, not native app behavior. For documentation changes, verify source requirement coverage, internal references/links, consistency, and Git whitespace checks. Add application setup and test instructions when the corresponding tools are introduced.
 
 ## Local artifacts
 
