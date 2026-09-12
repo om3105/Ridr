@@ -165,16 +165,18 @@ successful export is separate from compiling or launching a native application.
 | Browser preview | Real readiness connection, offline state, retry and environment navigation verified without browser errors |
 | Development reload | Touching TypeScript source recompiled and restarted the API; restarted service answered HTTP |
 | Native iOS compilation | Unsigned arm64 simulator Debug build succeeded with Xcode 26.6; app target minimum iOS 16.0 |
-| Native Android compilation | Local build verification pending; automated APK job configured |
+| iOS simulator launch | Installed and launched `com.ridr.app.dev` on iPhone SE (3rd generation), iOS 17.5; Expo development launcher displayed; native connection flow verification pending |
+| Native Android compilation | GitHub's Android job compiled the debug APK and uploaded its artifact; installation/launch on a device is not yet verified |
 | Monitor exit behavior | Healthy live API returned exit 0; refused connection returned exit 1 |
-| Hosted automation | Workflow configured; first GitHub Actions run pending |
+| Hosted automation | Both jobs passed on [run 34706108442](https://github.com/om3105/Ridr/actions/runs/34706108442) for commit `07144a5`: foundation checks, fresh database, all bundles, Android debug APK and artifact uploads |
 | Dependency audit | Multer 2.3.0 and UUID 11.1.1 verified installed; zero high/critical findings; 8 moderate package findings from one decoder advisory remain |
 
 The [GitHub Actions workflow](../../.github/workflows/checks.yml) runs foundation
 checks, a fresh database, API readiness, routing validation and bundle export. A
 separate Android job generates the native project and builds a debug APK. Outputs
-are retained for seven days. Workflow configuration alone is not a successful
-hosted run; neither job deploys an app or service.
+are retained for seven days. Both jobs have been verified on GitHub. The Android
+build result does not establish device behavior. Neither job deploys an app or
+service.
 
 ## Remaining setup and scope
 
