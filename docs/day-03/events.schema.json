@@ -1,0 +1,320 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ridr.example/contracts/events/v1.schema.json",
+  "title": "Ridr beta v1 real-time wire contracts",
+  "description": "Design contract, not a deployed service. Format assertions and service authorization/state/freshness checks are required in addition to structural validation.",
+  "oneOf": [
+    {"$ref": "#/$defs/LocationSample"},
+    {"$ref": "#/$defs/TextMessage"},
+    {"$ref": "#/$defs/PresetMessage"},
+    {"$ref": "#/$defs/PinMessage"},
+    {"$ref": "#/$defs/VoiceMessage"},
+    {"$ref": "#/$defs/SosRequest"},
+    {"$ref": "#/$defs/SosResolve"},
+    {"$ref": "#/$defs/AckAccepted"},
+    {"$ref": "#/$defs/AckRejected"},
+    {"$ref": "#/$defs/ServerEvent"}
+  ],
+  "$defs": {
+    "Uuid": {
+      "type": "string", "format": "uuid",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "Timestamp": {
+      "type": "string", "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$"
+    },
+    "Sequence": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "Revision": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "RideState": {"enum": ["lobby", "active", "ended"]},
+    "Role": {"enum": ["leader", "rider", "pillion"]},
+    "Coordinate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["lat", "lon"],
+      "properties": {
+        "lat": {"type": "number", "minimum": -90, "maximum": 90},
+        "lon": {"type": "number", "minimum": -180, "maximum": 180}
+      }
+    },
+    "Position": {
+      "type": "object", "additionalProperties": false,
+      "required": ["lat", "lon", "accuracyM", "recordedAt"],
+      "properties": {
+        "lat": {"type": "number", "minimum": -90, "maximum": 90},
+        "lon": {"type": "number", "minimum": -180, "maximum": 180},
+        "accuracyM": {"type": "number", "minimum": 0, "maximum": 100000},
+        "recordedAt": {"$ref": "#/$defs/Timestamp"}
+      }
+    },
+    "NullablePosition": {"oneOf": [{"$ref": "#/$defs/Position"}, {"type": "null"}]},
+    "StoppedMotion": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "observedAt", "source"],
+      "properties": {
+        "state": {"const": "stopped"},
+        "observedAt": {"$ref": "#/$defs/Timestamp"},
+        "source": {"enum": ["speed", "activity"]}
+      }
+    },
+    "ClientBase": {
+      "type": "object", "required": ["v", "id", "rideId", "capturedAt"],
+      "properties": {
+        "v": {"const": 1}, "id": {"$ref": "#/$defs/Uuid"},
+        "rideId": {"$ref": "#/$defs/Uuid"},
+        "capturedAt": {"$ref": "#/$defs/Timestamp"}
+      }
+    },
+    "LocationPayload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["consentEpoch", "position", "speedKph", "headingDegrees", "batteryPercent"],
+      "properties": {
+        "consentEpoch": {"$ref": "#/$defs/Revision"},
+        "position": {"$ref": "#/$defs/Position"},
+        "speedKph": {"type": ["number", "null"], "minimum": 0, "maximum": 500},
+        "headingDegrees": {"type": ["number", "null"], "minimum": 0, "exclusiveMaximum": 360},
+        "batteryPercent": {"type": ["integer", "null"], "minimum": 0, "maximum": 100}
+      }
+    },
+    "LocationSample": {
+      "allOf": [
+        {"$ref": "#/$defs/ClientBase"},
+        {"required": ["type", "payload"], "properties": {
+          "type": {"const": "location.sample"}, "payload": {"$ref": "#/$defs/LocationPayload"}
+        }}
+      ], "unevaluatedProperties": false
+    },
+    "TextMessage": {
+      "allOf": [
+        {"$ref": "#/$defs/ClientBase"},
+        {"required": ["type", "payload"], "properties": {
+          "type": {"const": "message.text"}, "payload": {
+            "type": "object", "additionalProperties": false, "required": ["text", "motion"],
+            "properties": {
+              "text": {"type": "string", "minLength": 1, "maxLength": 1000, "pattern": "\\S"},
+              "motion": {"$ref": "#/$defs/StoppedMotion"}
+            }
+          }
+        }}
+      ], "unevaluatedProperties": false
+    },
+    "Preset": {
+      "enum": ["stopping", "flat_tire", "regrouping", "turn_missed", "car_back", "need_stop", "uncomfortable_pace", "cold_tired"]
+    },
+    "PresetMessage": {
+      "allOf": [
+        {"$ref": "#/$defs/ClientBase"},
+        {"required": ["type", "payload"], "properties": {
+          "type": {"const": "message.preset"}, "payload": {
+            "type": "object", "additionalProperties": false, "required": ["preset"],
+            "properties": {"preset": {"$ref": "#/$defs/Preset"}}
+          }
+        }}
+      ], "unevaluatedProperties": false
+    },
+    "PinMessage": {
+      "allOf": [
+        {"$ref": "#/$defs/ClientBase"},
+        {"required": ["type", "payload"], "properties": {
+          "type": {"const": "message.pin"}, "payload": {
+            "type": "object", "additionalProperties": false, "required": ["coordinate", "text", "motion"],
+            "properties": {
+              "coordinate": {"$ref": "#/$defs/Coordinate"},
+              "text": {"type": "string", "minLength": 1, "maxLength": 1000, "pattern": "\\S"},
+              "motion": {"$ref": "#/$defs/StoppedMotion"}
+            }
+          }
+        }}
+      ], "unevaluatedProperties": false
+    },
+    "VoiceMessage": {
+      "allOf": [
+        {"$ref": "#/$defs/ClientBase"},
+        {"required": ["type", "payload"], "properties": {
+          "type": {"const": "message.voice"}, "payload": {
+            "type": "object", "additionalProperties": false, "required": ["mediaId", "motion"],
+            "properties": {"mediaId": {"$ref": "#/$defs/Uuid"}, "motion": {"$ref": "#/$defs/StoppedMotion"}}
+          }
+        }}
+      ], "unevaluatedProperties": false
+    },
+    "SosRequest": {
+      "allOf": [
+        {"$ref": "#/$defs/ClientBase"},
+        {"required": ["type", "payload"], "properties": {
+          "type": {"const": "sos.request"}, "payload": {
+            "type": "object", "additionalProperties": false, "required": ["kind", "position"],
+            "properties": {
+              "kind": {"enum": ["manual", "possible_crash"]},
+              "position": {"$ref": "#/$defs/NullablePosition"}
+            }
+          }
+        }}
+      ], "unevaluatedProperties": false
+    },
+    "Resolution": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["sosId", "resolution"],
+          "properties": {"sosId": {"$ref": "#/$defs/Uuid"}, "resolution": {"const": "reporter_okay"}}},
+        {"type": "object", "additionalProperties": false, "required": ["sosId", "resolution", "reason"],
+          "properties": {
+            "sosId": {"$ref": "#/$defs/Uuid"}, "resolution": {"const": "coordination_closed"},
+            "reason": {"type": "string", "minLength": 1, "maxLength": 500, "pattern": "\\S"}
+          }}
+      ]
+    },
+    "SosResolve": {
+      "allOf": [
+        {"$ref": "#/$defs/ClientBase"},
+        {"required": ["type", "payload"], "properties": {
+          "type": {"const": "sos.resolve"}, "payload": {"$ref": "#/$defs/Resolution"}
+        }}
+      ], "unevaluatedProperties": false
+    },
+    "AckBase": {
+      "type": "object", "required": ["v", "type", "id", "eventId", "serverTime"],
+      "properties": {
+        "v": {"const": 1}, "type": {"const": "server.ack"},
+        "id": {"$ref": "#/$defs/Uuid"}, "eventId": {"$ref": "#/$defs/Uuid"},
+        "serverTime": {"$ref": "#/$defs/Timestamp"}
+      }
+    },
+    "AckAccepted": {
+      "allOf": [
+        {"$ref": "#/$defs/AckBase"},
+        {"required": ["status", "rideId", "sequence"], "properties": {
+          "status": {"enum": ["accepted", "duplicate"]},
+          "rideId": {"$ref": "#/$defs/Uuid"}, "sequence": {"$ref": "#/$defs/Sequence"}
+        }}
+      ], "unevaluatedProperties": false
+    },
+    "ErrorCode": {
+      "enum": ["INVALID_REQUEST", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "RIDE_ENDED", "STATE_CONFLICT", "IDEMPOTENCY_CONFLICT", "MOTION_RESTRICTED", "STALE_MOTION", "SHARING_DISABLED", "CONSENT_EPOCH_STALE", "STALE_LOCATION", "CLOCK_SKEW", "RECONFIRMATION_REQUIRED", "MEDIA_NOT_READY", "RATE_LIMITED", "TEMPORARILY_UNAVAILABLE"]
+    },
+    "AckRejected": {
+      "allOf": [
+        {"$ref": "#/$defs/AckBase"},
+        {"required": ["status", "code", "retryable"], "properties": {
+          "status": {"const": "rejected"}, "code": {"$ref": "#/$defs/ErrorCode"}, "retryable": {"type": "boolean"}
+        }}
+      ], "unevaluatedProperties": false
+    },
+    "AcceptedMessageBody": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["kind", "text"],
+          "properties": {"kind": {"const": "text"}, "text": {"type": "string", "minLength": 1, "maxLength": 1000, "pattern": "\\S"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "preset"],
+          "properties": {"kind": {"const": "preset"}, "preset": {"$ref": "#/$defs/Preset"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "coordinate", "text"],
+          "properties": {
+            "kind": {"const": "pin"}, "coordinate": {"$ref": "#/$defs/Coordinate"},
+            "text": {"type": "string", "minLength": 1, "maxLength": 1000, "pattern": "\\S"}
+          }},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "mediaId", "durationSeconds"],
+          "properties": {
+            "kind": {"const": "voice"}, "mediaId": {"$ref": "#/$defs/Uuid"},
+            "durationSeconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 30}
+          }}
+      ]
+    },
+    "PairSnapshot": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "object", "additionalProperties": false, "required": ["pairId", "riderMemberId", "pillionMemberId"],
+          "properties": {
+            "pairId": {"$ref": "#/$defs/Uuid"}, "riderMemberId": {"$ref": "#/$defs/Uuid"}, "pillionMemberId": {"$ref": "#/$defs/Uuid"}
+          }}
+      ]
+    },
+    "LocationUpdated": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "sampleId", "memberId", "sample"],
+      "properties": {
+        "kind": {"const": "location.updated"}, "sampleId": {"$ref": "#/$defs/Uuid"},
+        "memberId": {"$ref": "#/$defs/Uuid"}, "sample": {"$ref": "#/$defs/LocationPayload"}
+      }
+    },
+    "MessageAccepted": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "messageId", "authorMemberId", "capturedAt", "body"],
+      "properties": {
+        "kind": {"const": "message.accepted"}, "messageId": {"$ref": "#/$defs/Uuid"},
+        "authorMemberId": {"$ref": "#/$defs/Uuid"}, "capturedAt": {"$ref": "#/$defs/Timestamp"},
+        "body": {"$ref": "#/$defs/AcceptedMessageBody"}
+      }
+    },
+    "SosAccepted": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "sosId", "reporterMemberId", "sosKind", "capturedAt", "position", "pairSnapshot", "linkedSosIds"],
+      "properties": {
+        "kind": {"const": "sos.accepted"}, "sosId": {"$ref": "#/$defs/Uuid"},
+        "reporterMemberId": {"$ref": "#/$defs/Uuid"}, "sosKind": {"enum": ["manual", "possible_crash"]},
+        "capturedAt": {"$ref": "#/$defs/Timestamp"}, "position": {"$ref": "#/$defs/NullablePosition"},
+        "pairSnapshot": {"$ref": "#/$defs/PairSnapshot"},
+        "linkedSosIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/Uuid"}}
+      }
+    },
+    "SosResolved": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "resolutionId", "capturedAt", "resolution"],
+      "properties": {
+        "kind": {"const": "sos.resolved"}, "resolutionId": {"$ref": "#/$defs/Uuid"},
+        "capturedAt": {"$ref": "#/$defs/Timestamp"}, "resolution": {"$ref": "#/$defs/Resolution"}
+      }
+    },
+    "ResourceInvalidated": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "resource", "resourceId", "revision"],
+      "properties": {
+        "kind": {"const": "resource.invalidated"},
+        "resource": {"enum": ["ride", "membership", "route", "pair", "readiness", "headcount", "sharing", "media", "summary"]},
+        "resourceId": {"$ref": "#/$defs/Uuid"}, "revision": {"$ref": "#/$defs/Revision"}
+      }
+    },
+    "StragglerWarning": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "warningType", "unitMemberId", "distanceBehindM", "thresholdM", "observedAt", "expiresAt"],
+      "properties": {
+        "kind": {"const": "warning"}, "warningType": {"const": "straggler"},
+        "unitMemberId": {"$ref": "#/$defs/Uuid"}, "distanceBehindM": {"type": "number", "minimum": 0},
+        "thresholdM": {"type": "number", "minimum": 200, "maximum": 2000},
+        "observedAt": {"$ref": "#/$defs/Timestamp"}, "expiresAt": {"$ref": "#/$defs/Timestamp"}
+      }
+    },
+    "BatteryWarning": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "warningType", "memberId", "batteryPercent", "thresholdPercent", "observedAt", "expiresAt"],
+      "properties": {
+        "kind": {"const": "warning"}, "warningType": {"const": "battery"},
+        "memberId": {"$ref": "#/$defs/Uuid"}, "batteryPercent": {"type": "integer", "minimum": 0, "maximum": 100},
+        "thresholdPercent": {"enum": [10, 20, 30]},
+        "observedAt": {"$ref": "#/$defs/Timestamp"}, "expiresAt": {"$ref": "#/$defs/Timestamp"}
+      }
+    },
+    "ServerEvent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["v", "type", "id", "rideId", "sequence", "acceptedAt", "actorMemberId", "payload"],
+      "properties": {
+        "v": {"const": 1}, "type": {"const": "server.event"}, "id": {"$ref": "#/$defs/Uuid"},
+        "rideId": {"$ref": "#/$defs/Uuid"}, "sequence": {"$ref": "#/$defs/Sequence"},
+        "acceptedAt": {"$ref": "#/$defs/Timestamp"},
+        "actorMemberId": {"oneOf": [{"$ref": "#/$defs/Uuid"}, {"type": "null"}]},
+        "payload": {"oneOf": [
+          {"$ref": "#/$defs/LocationUpdated"}, {"$ref": "#/$defs/MessageAccepted"},
+          {"$ref": "#/$defs/SosAccepted"}, {"$ref": "#/$defs/SosResolved"},
+          {"$ref": "#/$defs/ResourceInvalidated"}, {"$ref": "#/$defs/StragglerWarning"}, {"$ref": "#/$defs/BatteryWarning"}
+        ]}
+      }
+    },
+    "PublicStatus": {
+      "type": "object", "additionalProperties": false,
+      "required": ["displayName", "rideState", "lastPosition", "sosState", "servedAt", "leaseExpiresAt", "linkExpiresAt"],
+      "properties": {
+        "displayName": {"type": "string", "minLength": 1, "maxLength": 80},
+        "rideState": {"const": "active"}, "lastPosition": {"$ref": "#/$defs/NullablePosition"},
+        "sosState": {"enum": ["none", "open", "reporter_okay", "coordination_closed"]},
+        "servedAt": {"$ref": "#/$defs/Timestamp"}, "leaseExpiresAt": {"$ref": "#/$defs/Timestamp"},
+        "linkExpiresAt": {"$ref": "#/$defs/Timestamp"}
+      }
+    }
+  }
+}

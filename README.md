@@ -4,7 +4,7 @@ Ridr is a planned iOS and Android app for group ride coordination: shared live l
 
 ## Current milestone
 
-Day 1 requirements planning and Day 2 journey/wireframe design are complete. The repository contains the product baseline, a clickable browser design artifact, design checks, and the development workflow. Day 3 architecture and application initialization remain later milestones.
+Days 1–3 are complete: requirements, journey/wireframe design, and architecture/database/API contracts. The repository contains the product baseline, a clickable browser design artifact, reference database schema, contract checks, and development workflow. Application and environment initialization is Day 4.
 
 The plan targets a 35-working-day beta, assuming two developers and part-time design/QA support. Subscription checkout is deferred to v1.1. Automatic crash detection is conditional on device and field validation and is not a promised production safety capability.
 
@@ -17,18 +17,21 @@ The plan targets a 35-working-day beta, assuming two developers and part-time de
 - [Day 2 design handoff and verification](docs/day-02/README.md)
 - [Clickable UI wireframes](docs/day-02/wireframes.html)
 - [User journeys and screen navigation](docs/day-02/journeys.md)
+- [Day 3 architecture handoff and verification](docs/day-03/README.md)
+- [Database model and reference schema](docs/day-03/data-model.md)
+- [API and real-time contracts](docs/day-03/api-contracts.md)
 
 These documents cover all 34 source functional requirements, 15 supporting items, and 25 planned acceptance scenarios. Planned checks are not represented as completed app tests.
 
-## Proposed technology
+## Selected technology
 
-The working proposal is React Native with Expo and TypeScript for mobile; NestJS and Socket.IO for the backend; PostgreSQL/PostGIS with Supabase Auth/Storage; and MapLibre/OSRM for maps and routing. Versions, service providers, and minimum-OS compatibility must be verified during the foundation milestone before installation. This repository does not yet contain those implementations.
+The [Day 3 architecture](docs/day-03/architecture.md) selects React Native with Expo development builds and TypeScript; NestJS/Socket.IO; PostgreSQL/PostGIS with Supabase Auth/Storage; and MapLibre with MapTiler tiles and separate OSRM driving/cycling services. Pin compatible versions during Day 4 setup and verify iOS 16+/Android 11+ on Day 5. These are design decisions, not installed application services.
 
 ## Development workflow
 
 Follow [AGENTS.md](AGENTS.md). Implement one logical milestone at a time, verify the actual change, inspect staged content, and create a specific truthful commit. Use real timestamps and preserve actual authorship. Do not manufacture work or history.
 
-There are currently no application `npm test`, lint, or build scripts. The standalone Day 2 browser checks are documented in the [design handoff](docs/day-02/README.md#re-run-the-design-checks). They validate the design artifact, not native app behavior. For documentation changes, verify source requirement coverage, internal references/links, consistency, and Git whitespace checks. Add application setup and test instructions when the corresponding tools are introduced.
+There are currently no application `npm test`, lint, or build scripts. Run standalone checks as described in the [Day 2 design handoff](docs/day-02/README.md#re-run-the-design-checks) and [Day 3 architecture handoff](docs/day-03/README.md#re-run-the-checks). They validate design artifacts, reference database constraints and event shapes, not native app behavior or deployed access controls. Add application setup and test instructions with Day 4 tooling.
 
 ## Local artifacts
 
