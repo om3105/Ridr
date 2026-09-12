@@ -1,0 +1,89 @@
+name: Project checks
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  foundation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run setup
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run db:up
+      - run: npm run db:migrate
+      - run: npm run test:database
+        env:
+          NODE_ENV: test
+      - run: npm run build
+      - name: Check running API readiness
+        run: |
+          node --env-file=.env apps/api/dist/main.js > /tmp/ridr-api.log 2>&1 &
+          for attempt in $(seq 1 20); do
+            if npm run monitor; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/ridr-api.log
+          exit 1
+      - name: Prepare and verify routing profiles
+        run: |
+          npm run routing:prepare
+          npm run routing:up
+          for attempt in $(seq 1 20); do
+            if npm run test:routing; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-bundles-and-api
+          path: |
+            apps/mobile/dist
+            apps/api/dist
+          retention-days: 7
+      - name: Stop test services
+        if: always()
+        run: docker compose --profile routing down
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: npm ci
+      - run: npx expo prebuild --platform android --no-install
+        working-directory: apps/mobile
+      - run: ./gradlew assembleDebug --no-daemon
+        working-directory: apps/mobile/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ridr-android-debug
+          path: apps/mobile/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 7

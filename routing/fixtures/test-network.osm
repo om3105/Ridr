@@ -1,0 +1,17 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Synthetic square with a bicycle-only diagonal. Not real roads or navigation data. -->
+<osm version="0.6" generator="Ridr test fixture">
+  <node id="1" version="1" lat="0.000" lon="0.000" />
+  <node id="2" version="1" lat="0.000" lon="0.010" />
+  <node id="3" version="1" lat="0.010" lon="0.010" />
+  <node id="4" version="1" lat="0.010" lon="0.000" />
+  <way id="101" version="1">
+    <nd ref="1"/><nd ref="2"/><nd ref="3"/><nd ref="4"/><nd ref="1"/>
+    <tag k="highway" v="residential"/><tag k="name" v="Test perimeter"/>
+  </way>
+  <way id="102" version="1">
+    <nd ref="1"/><nd ref="3"/>
+    <tag k="highway" v="cycleway"/><tag k="bicycle" v="yes"/>
+    <tag k="motor_vehicle" v="no"/><tag k="name" v="Test cycling shortcut"/>
+  </way>
+</osm>
