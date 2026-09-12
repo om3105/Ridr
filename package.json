@@ -1,0 +1,49 @@
+{
+  "name": "ridr",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=24.19.0 <25"
+  },
+  "packageManager": "npm@11.19.1",
+  "scripts": {
+    "dev:api": "npm run dev --workspace @ridr/api",
+    "dev:mobile": "npm run start --workspace @ridr/mobile",
+    "dev:web": "npm run web --workspace @ridr/mobile",
+    "build": "npm run build --workspaces",
+    "lint": "eslint apps scripts",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm run test --workspaces",
+    "db:up": "docker compose up -d --wait database",
+    "db:migrate": "node --env-file=.env scripts/db-migrate.mjs",
+    "test:database": "node --env-file=.env scripts/db-check.mjs",
+    "monitor": "node --env-file=.env scripts/monitor.mjs",
+    "setup": "node scripts/setup.mjs",
+    "routing:prepare": "node scripts/routing-prepare.mjs",
+    "routing:up": "docker compose --profile routing up -d routing-driving routing-cycling",
+    "test:routing": "node scripts/routing-check.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.1",
+    "@types/node": "24.10.1",
+    "eslint": "9.39.1",
+    "eslint-plugin-react-hooks": "7.0.1",
+    "globals": "16.5.0",
+    "pg": "8.23.0",
+    "prettier": "3.6.2",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.48.1"
+  },
+  "overrides": {
+    "@nestjs/platform-express": {
+      "multer": "2.3.0"
+    },
+    "xcode": {
+      "uuid": "11.1.1"
+    }
+  }
+}
