@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { apiUrl } from '../src/connection';
+import { apiUrl, checkConnection, type ConnectionResult } from '../src/connection';
+import { Button } from '../src/auth/components';
 import { colors } from '../src/theme';
 
 function configuredOrigin(): string {
@@ -12,6 +14,17 @@ function configuredOrigin(): string {
 }
 
 export default function EnvironmentScreen() {
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<ConnectionResult | null>(null);
+  async function testConnection() {
+    if (checking) return;
+    setChecking(true);
+    try {
+      setResult(await checkConnection(apiUrl));
+    } finally {
+      setChecking(false);
+    }
+  }
   return (
     <SafeAreaView edges={['bottom']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -33,6 +46,22 @@ export default function EnvironmentScreen() {
             <Text style={styles.note}>
               The check uses /v1/health/ready and waits up to five seconds.
             </Text>
+            <Button
+              label={checking ? 'Checking…' : 'Test connection'}
+              disabled={checking}
+              onPress={() => {
+                void testConnection();
+              }}
+            />
+            {result && (
+              <Text accessibilityLiveRegion="polite" style={styles.note}>
+                {result.status === 'ready'
+                  ? `Service and database ready. Checked at ${new Date(result.checkedAt).toLocaleTimeString()}.`
+                  : result.status === 'not-configured'
+                    ? 'Set the service address before testing.'
+                    : 'The service could not be verified. Check the address and connection, then retry.'}
+              </Text>
+            )}
           </View>
 
           <Text accessibilityRole="header" style={styles.sectionTitle}>
@@ -64,8 +93,8 @@ export default function EnvironmentScreen() {
           </Text>
           <Text style={styles.body}>
             A successful result confirms readiness at the displayed check time. Device permissions,
-            maps, background location and real ride behavior need their own tests in later
-            milestones.
+            maps and background location have separate native checks after sign-in. Real ride
+            behavior remains in later milestones.
           </Text>
           <Text style={styles.support}>Target devices: iOS 16 or later · Android 11 or later</Text>
         </View>
