@@ -34,6 +34,16 @@ jobs:
         env:
           NODE_ENV: test
       - run: npm run build
+      - name: Verify profiles and local verified-email sessions
+        env:
+          NODE_ENV: test
+        run: |
+          npm run test:profiles --workspace @ridr/api
+          npm run auth:setup
+          npm run auth:roles
+          npm run auth:up
+          npm run auth:access
+          npm run test:auth
       - name: Check running API readiness
         run: |
           node --env-file=.env apps/api/dist/main.js > /tmp/ridr-api.log 2>&1 &
@@ -61,7 +71,7 @@ jobs:
           retention-days: 7
       - name: Stop test services
         if: always()
-        run: docker compose --profile routing down
+        run: docker compose --profile routing --profile auth down
 
   android:
     runs-on: ubuntu-latest
@@ -80,7 +90,7 @@ jobs:
       - run: npm ci
       - run: npx expo prebuild --platform android --no-install
         working-directory: apps/mobile
-      - run: ./gradlew assembleDebug --no-daemon
+      - run: ./gradlew assembleDebug --no-daemon --max-workers=2
         working-directory: apps/mobile/android
       - uses: actions/upload-artifact@v4
         with:

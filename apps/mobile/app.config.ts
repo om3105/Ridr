@@ -23,6 +23,21 @@ const config: ExpoConfig = {
   plugins: [
     'expo-router',
     'expo-dev-client',
+    'expo-secure-store',
+    '@maplibre/maplibre-react-native',
+    ['expo-sqlite', { useSQLCipher: true }],
+    [
+      'expo-location',
+      {
+        locationWhenInUsePermission:
+          'Allow Ridr to use your location only when you choose a location check.',
+        locationAlwaysAndWhenInUsePermission:
+          'Allow Ridr to test location briefly in the background. You can stop and clear the test at any time.',
+        isIosBackgroundLocationEnabled: true,
+        isAndroidBackgroundLocationEnabled: true,
+        isAndroidForegroundServiceEnabled: true,
+      },
+    ],
     [
       'expo-build-properties',
       {

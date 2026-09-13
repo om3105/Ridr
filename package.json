@@ -22,6 +22,12 @@
     "test:database": "node --env-file=.env scripts/db-check.mjs",
     "monitor": "node --env-file=.env scripts/monitor.mjs",
     "setup": "node scripts/setup.mjs",
+    "auth:setup": "node scripts/auth-setup.mjs",
+    "auth:roles": "node --env-file=.env --env-file=.env.auth scripts/auth-bootstrap.mjs roles",
+    "auth:up": "docker compose --env-file .env --env-file .env.auth --profile auth up -d --wait auth",
+    "auth:access": "node --env-file=.env --env-file=.env.auth scripts/auth-bootstrap.mjs access",
+    "auth:hosted:prepare": "node --env-file=apps/mobile/.env scripts/auth-hosted-setup.mjs",
+    "test:auth": "node --env-file=.env --env-file=.env.auth scripts/auth-check.mjs",
     "routing:prepare": "node scripts/routing-prepare.mjs",
     "routing:up": "docker compose --profile routing up -d routing-driving routing-cycling",
     "test:routing": "node scripts/routing-check.mjs"

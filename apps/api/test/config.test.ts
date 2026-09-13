@@ -49,3 +49,50 @@ test('rejects missing or invalid database URLs without including secrets in erro
     );
   }
 });
+
+test('auth configuration is optional but complete when enabled, with shared secrets forbidden in production', () => {
+  const local = {
+    ...valid,
+    SUPABASE_AUTH_URL: 'http://127.0.0.1:9999',
+    AUTH_DATABASE_URL: 'postgresql://ridr_sessions:local@127.0.0.1:5432/ridr',
+    SUPABASE_JWT_SECRET: 'test-secret-containing-at-least-32-characters',
+  };
+  assert.deepEqual(readConfig(local).auth, {
+    url: local.SUPABASE_AUTH_URL,
+    databaseUrl: local.AUTH_DATABASE_URL,
+    jwtSecret: local.SUPABASE_JWT_SECRET,
+  });
+  assert.deepEqual(
+    readConfig({
+      ...valid,
+      NODE_ENV: 'production',
+      SUPABASE_AUTH_URL: 'https://example.supabase.co/auth/v1',
+      AUTH_DATABASE_URL: local.AUTH_DATABASE_URL,
+    }).auth,
+    { url: 'https://example.supabase.co/auth/v1', databaseUrl: local.AUTH_DATABASE_URL },
+  );
+  assert.throws(() => readConfig({ ...local, NODE_ENV: 'production' }), /SUPABASE_AUTH_URL/);
+  assert.throws(
+    () =>
+      readConfig({
+        ...local,
+        SUPABASE_AUTH_URL: 'https://example.supabase.co/auth/v1',
+        NODE_ENV: 'production',
+      }),
+    /SUPABASE_JWT_SECRET/,
+  );
+  assert.throws(
+    () => readConfig({ ...local, SUPABASE_JWT_SECRET: 'short' }),
+    /SUPABASE_JWT_SECRET/,
+  );
+  assert.throws(() => readConfig({ ...local, AUTH_DATABASE_URL: undefined }), /AUTH_DATABASE_URL/);
+  assert.throws(() => readConfig({ ...local, SUPABASE_AUTH_URL: undefined }), /SUPABASE_AUTH_URL/);
+  for (const url of [
+    'http://remote.test/auth/v1',
+    'https://example.test/auth/v1/',
+    'https://secret@example.test/auth/v1',
+    'https://example.test/auth/v1?key=secret',
+  ]) {
+    assert.throws(() => readConfig({ ...local, SUPABASE_AUTH_URL: url }), /SUPABASE_AUTH_URL/);
+  }
+});

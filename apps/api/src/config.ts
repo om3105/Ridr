@@ -4,6 +4,30 @@ export interface ApiConfig {
   port: number;
   databaseUrl: string;
   corsOrigins: string[];
+  auth?: AuthConfig;
+}
+
+export interface AuthConfig {
+  url: string;
+  databaseUrl: string;
+  jwtSecret?: string;
+}
+
+function postgresUrl(value: string | undefined, name: string): string {
+  try {
+    const parsed = new URL(value ?? '');
+    if (
+      !['postgres:', 'postgresql:'].includes(parsed.protocol) ||
+      !parsed.hostname ||
+      !parsed.username ||
+      parsed.pathname.length < 2 ||
+      parsed.hash
+    )
+      throw new Error();
+    return value!;
+  } catch {
+    throw new Error(`${name} must be a PostgreSQL URL with a user, host, and database.`);
+  }
 }
 
 export function readConfig(env: NodeJS.ProcessEnv): ApiConfig {
@@ -23,20 +47,42 @@ export function readConfig(env: NodeJS.ProcessEnv): ApiConfig {
     throw new Error('API_HOST must be a hostname or IP address.');
   }
 
-  const databaseUrl = env.DATABASE_URL;
-  try {
-    const parsed = new URL(databaseUrl ?? '');
-    if (
-      !['postgres:', 'postgresql:'].includes(parsed.protocol) ||
-      !parsed.hostname ||
-      !parsed.username ||
-      parsed.pathname.length < 2 ||
-      parsed.hash
-    ) {
-      throw new Error();
+  const databaseUrl = postgresUrl(env.DATABASE_URL, 'DATABASE_URL');
+
+  let auth: AuthConfig | undefined;
+  if (env.SUPABASE_AUTH_URL || env.AUTH_DATABASE_URL || env.SUPABASE_JWT_SECRET) {
+    let url: URL;
+    try {
+      url = new URL(env.SUPABASE_AUTH_URL ?? '');
+      const localHttp =
+        environment !== 'production' &&
+        url.protocol === 'http:' &&
+        ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
+      if (
+        (!localHttp && url.protocol !== 'https:') ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash ||
+        env.SUPABASE_AUTH_URL?.endsWith('/')
+      )
+        throw new Error();
+    } catch {
+      throw new Error(
+        'SUPABASE_AUTH_URL must be an HTTPS Auth base URL without a trailing slash; HTTP loopback is allowed for local development.',
+      );
     }
-  } catch {
-    throw new Error('DATABASE_URL must be a PostgreSQL URL with a user, host, and database.');
+    const jwtSecret = env.SUPABASE_JWT_SECRET;
+    if (jwtSecret && (environment === 'production' || jwtSecret.length < 32)) {
+      throw new Error(
+        'SUPABASE_JWT_SECRET is for local development only and must have at least 32 characters.',
+      );
+    }
+    auth = {
+      url: env.SUPABASE_AUTH_URL!,
+      databaseUrl: postgresUrl(env.AUTH_DATABASE_URL, 'AUTH_DATABASE_URL'),
+      ...(jwtSecret ? { jwtSecret } : {}),
+    };
   }
 
   const corsOrigins = (env.CORS_ORIGINS ?? '')
@@ -60,7 +106,8 @@ export function readConfig(env: NodeJS.ProcessEnv): ApiConfig {
     environment: environment as ApiConfig['environment'],
     host,
     port,
-    databaseUrl: databaseUrl!,
+    databaseUrl,
     corsOrigins: [...new Set(corsOrigins)],
+    ...(auth ? { auth } : {}),
   };
 }

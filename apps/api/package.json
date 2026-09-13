@@ -11,7 +11,8 @@
     "start": "node dist/main.js",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js"
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
+    "test:profiles": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/profiles.integration.js"
   },
   "dependencies": {
     "@nestjs/common": "11.2.3",
@@ -19,6 +20,7 @@
     "@nestjs/platform-express": "11.2.3",
     "@nestjs/platform-socket.io": "11.2.3",
     "@nestjs/websockets": "11.2.3",
+    "jose": "6.2.12",
     "pg": "8.23.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
