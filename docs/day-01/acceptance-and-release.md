@@ -85,7 +85,7 @@ Product-owner entries are future review checkpoints, not an assertion that anyon
 
 ### Day 5 scope amendment: 14 September 2026
 
-The owner explicitly instructed: “skip the physical iOS and Android map/background-location checks.” This supersedes the physical-device portion of the original Day 5 checkpoint above, including its first-pass hardware deadline. Record these checks as skipped, not passed. Native build compatibility, hosted account setup and simulator verification remain in Day 5 scope; their actual status is recorded in the [Day 5 handoff](../day-05/README.md).
+The owner explicitly instructed: “skip the physical iOS and Android map/background-location checks.” The owner subsequently also skipped the simulator checks (including iPhone 16 Pro/iOS 18 and Android emulator account, profile, session, sign-out, map, permissions and encrypted-storage observations) and authorized moving to Day 6. This supersedes the device/simulator portion of the original Day 5 checkpoint above, including its first-pass hardware deadline. Record these checks as skipped, not passed. Hosted account setup remains deferred; the [Day 5 handoff](../day-05/README.md) retains its outstanding configuration and verification requirements.
 
 The beta device matrix and field-release requirements remain unchanged. The Day 5 waiver does not establish minimum-OS runtime compatibility, real background-location continuity, battery performance or OEM behavior on physical phones.
 

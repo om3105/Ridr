@@ -4,7 +4,7 @@ Ridr is an iOS and Android app in development for group ride coordination: share
 
 ## Current milestone
 
-Days 1–3 establish the requirements, wireframes and architecture. Day 4 adds the Expo app, NestJS backend, private PostgreSQL/PostGIS database and local routing services. Day 5 implements verified email accounts, secure session restoration, editable profiles, a native map and explicit location permission checks. iOS and Android native builds and GitHub checks pass. Hosted account integration and simulator checks remain pending in the [Day 5 handoff](docs/day-05/README.md); the owner skipped the physical map/background-location checks for this milestone. Ride creation and joining remain Day 6.
+Days 1–3 establish the requirements, wireframes and architecture. Day 4 adds the Expo app, NestJS backend, private PostgreSQL/PostGIS database and local routing services. Day 5 implements verified email accounts, secure session restoration, editable profiles, a native map and explicit location permission checks. The owner skipped physical-device and simulator checks and authorized [Day 6 ride creation and joining](docs/day-06/README.md), now in progress. Hosted account setup remains deferred in the [Day 5 handoff](docs/day-05/README.md); local Auth supports continued development.
 
 The plan targets a 35-working-day beta, assuming two developers and part-time design/QA support. Subscription checkout is deferred to v1.1. Automatic crash detection is conditional on device and field validation and is not a promised production safety capability.
 
@@ -22,6 +22,7 @@ The plan targets a 35-working-day beta, assuming two developers and part-time de
 - [API and real-time contracts](docs/day-03/api-contracts.md)
 - [Day 4 setup, verification and device checklist](docs/day-04/README.md)
 - [Day 5 accounts, native checks and remaining prerequisites](docs/day-05/README.md)
+- [Day 6 ride creation and joining](docs/day-06/README.md)
 
 These documents cover all 34 source functional requirements, 15 supporting items, and 25 planned acceptance scenarios. Planned checks are not represented as completed app tests.
 

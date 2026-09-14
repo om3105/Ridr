@@ -3,11 +3,12 @@
 Day 5 implements the authenticated app shell, editable profiles, permission
 recovery and a bounded native map/location/storage check. Ride creation, joining,
 live group location and the offline ride queue remain later milestones.
-Implementation is delivered; hosted setup and simulator observations listed
-below still need verification before Day 5 can close. On 14 September 2026 the
-project owner explicitly skipped the physical iOS/Android map and
-background-location checks for Day 5. Those checks are not reported as passed;
-the beta's physical-device release requirements remain in place.
+Implementation is delivered with outstanding hosted setup. On 14 September 2026
+the owner skipped the physical iOS/Android map and background-location checks,
+then also skipped the simulator checks and explicitly authorized moving to
+[Day 6](../day-06/README.md). Neither set of skipped checks is reported as passed.
+Hosted account integration remains deferred, and the beta's physical-device
+release requirements remain in place.
 
 ## Account flow
 
@@ -188,23 +189,21 @@ Continuation verified on 14 September 2026:
 | Hosted account prerequisites | Saved Auth configuration has confirmation enabled, password minimum 6, no custom SMTP host, and no code token in confirmation/recovery templates. The required minimum is 12. Template-customization eligibility and delivery must be resolved before the app's code flow can be verified. |
 | Simulator access | iPhone SE (3rd generation), iOS 17.5 booted and Simulator control became available. Ridr opened to a development-server connection error because the local preview server had stopped. Restart was rejected by automatic approval review because the account usage limit was reached. No runtime pass is claimed. |
 | Physical-device scope amendment | Owner instruction: “skip the physical iOS and Android map/background-location checks.” These observations are removed from the Day 5 completion gate, with their results recorded as skipped. They remain required evidence before applicable beta behavior is claimed. |
+| Simulator scope amendment | The owner subsequently skipped the iPhone 16 Pro/iOS 18 and Android emulator checks and authorized Day 6. Account, profile, session, sign-out, map, permission and encrypted-storage simulator observations remain unverified. Before that instruction, the iOS startup error was traced to an unsigned build missing a required Keychain entitlement; a signed rebuild was started but its runtime outcome was not verified. |
 
-Remaining prerequisites and acceptance observations:
+Deferred hosted prerequisite:
 
 1. Run the privately generated session-reader SQL in the supplied Supabase
    project and configure the project CA certificate. Add verification/recovery
    codes through a supported hosted email configuration and set the minimum
    password length to 12. Then verify signup, profile access and revoked-session
    rejection against hosted Auth; local tests do not substitute for this check.
-2. Resume the local preview once command approval is available. On the iOS
-   simulator and Android emulator, sign in to the local test service, save a
-   profile, relaunch and verify secure restoration, sign out and verify private
-   screens close. Observe map rendering without a location prompt; deny
-   permission and verify settings recovery. Exercise the encrypted probe and
-   bounded check cleanup where supported, recording emulator limitations.
-3. Verify actual provider tiles, native map rendering and visible attribution
-   using the configured MapTiler key. A successful style/TileJSON response alone
-   does not establish a rendered map.
+
+Skipped simulator observations: sign-in, profile save, secure restoration,
+sign-out, permission denial/recovery, encrypted probe/cleanup and native map
+rendering/attribution. Actual tile payloads also remain unverified. A successful
+style/TileJSON response alone does not establish a rendered map. These are not
+prerequisites for beginning Day 6 under the owner's latest instruction.
 
 Physical iOS/Android map and background-location observations are skipped for
 Day 5 by owner instruction. Before beta release, the original hardware matrix
