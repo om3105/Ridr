@@ -3,8 +3,11 @@
 Day 5 implements the authenticated app shell, editable profiles, permission
 recovery and a bounded native map/location/storage check. Ride creation, joining,
 live group location and the offline ride queue remain later milestones.
-Implementation is delivered; the hosted setup and device observations listed
-below must still be completed before closing the Day 5 feasibility gate.
+Implementation is delivered; hosted setup and simulator observations listed
+below still need verification before Day 5 can close. On 14 September 2026 the
+project owner explicitly skipped the physical iOS/Android map and
+background-location checks for Day 5. Those checks are not reported as passed;
+the beta's physical-device release requirements remain in place.
 
 ## Account flow
 
@@ -12,9 +15,13 @@ Supabase Auth owns email/password signup, email verification, sign-in, password
 recovery, refresh and sign-out. The app accepts verification/recovery codes, so
 configure the corresponding Supabase email templates to include `{{ .Token }}`.
 The templates in [auth/templates](../../auth/templates/) work with the local
-service and can be copied to the hosted project's Auth email templates. Keep
-email confirmation enabled. Configure a minimum password length of 12 in hosted
-Auth; the local service and signup form use this baseline.
+service. For hosted Auth, first confirm that the project permits template
+customization. Supabase's [3 June 2026 policy change](https://supabase.com/changelog/46599-changes-to-email-template-customisation-on-free-tier)
+restricts new free-tier projects using default SMTP to the default templates;
+custom SMTP permits customization, and older projects and paid plans are
+unaffected. Do not assume a public API key enables email delivery or editable
+templates. Keep email confirmation enabled and configure a minimum password
+length of 12; the local service and signup form use this baseline.
 
 Native sessions are split into bounded encrypted SecureStore entries; failed or
 partial writes do not restore an older session. The browser preview uses memory
@@ -168,26 +175,42 @@ Checks performed on 13 September 2026:
 | Android native build | Debug arm64 APK built successfully with the same native modules; merged manifest minimum SDK is 30 (Android 11). |
 | Dependency audit | No high or critical findings; eight moderate findings remain in the dependency tree. See the Day 4 audit explanation before changing transitive packages. |
 | Hosted public Auth settings | Project settings and JWKS endpoints returned HTTP 200; email enabled, confirmation required, ES256 key available. This does not establish a working hosted account flow. |
-| Native interactive checks | Pending. Computer control was blocked by the locked Mac; subsequent Simulator requests timed out. No visual map, permission-prompt, SecureStore restore or SQLCipher runtime result is claimed. |
-| Physical phones | None connected. Minimum-OS, lock-screen, background callback and battery/OEM behavior remain unverified. |
+| Native interactive checks | Pending. See the 14 September continuation record below for the current blocker. No visual map, permission-prompt, SecureStore restore or SQLCipher runtime result is claimed. |
+| Physical phones | Not run. The owner subsequently skipped these Day 5 checks; see the dated scope amendment below. Minimum-OS, lock-screen, background callback and battery/OEM behavior remain unverified. |
+
+Continuation verified on 14 September 2026:
+
+| Check | Result |
+| --- | --- |
+| GitHub checks | [Run 34773778631](https://github.com/om3105/Ridr/actions/runs/34773778631) passed for pushed commit `b68be039f4b6a81d1ef2b4c731e7018692732f17`. This does not include subsequent local edits. |
+| MapTiler configuration | Supplied key saved in ignored `apps/mobile/.env` with owner-only file permissions. The streets style and vector-source TileJSON returned HTTP 200, with 90 style layers and attribution present. Actual tile payloads and native rendering remain unverified. |
+| Hosted management authentication | Auth configuration and SSL configuration reads returned HTTP 200 after correcting the existing Authorization header format. This verifies management access, not a hosted user session or an available MCP connection. |
+| Hosted account prerequisites | Saved Auth configuration has confirmation enabled, password minimum 6, no custom SMTP host, and no code token in confirmation/recovery templates. The required minimum is 12. Template-customization eligibility and delivery must be resolved before the app's code flow can be verified. |
+| Simulator access | iPhone SE (3rd generation), iOS 17.5 booted and Simulator control became available. Ridr opened to a development-server connection error because the local preview server had stopped. Restart was rejected by automatic approval review because the account usage limit was reached. No runtime pass is claimed. |
+| Physical-device scope amendment | Owner instruction: “skip the physical iOS and Android map/background-location checks.” These observations are removed from the Day 5 completion gate, with their results recorded as skipped. They remain required evidence before applicable beta behavior is claimed. |
 
 Remaining prerequisites and acceptance observations:
 
 1. Run the privately generated session-reader SQL in the supplied Supabase
    project and configure the project CA certificate. Add verification/recovery
-   codes to the hosted email templates and set the minimum password length to
-   12. Then verify signup, profile access and revoked-session rejection against
-   hosted Auth; local tests do not substitute for this check.
-2. Unlock the Mac and restore working Simulator/Android emulator control. Sign
-   in to the local test service, save a profile, relaunch and verify secure
-   restoration, sign out and verify private screens close. Observe map rendering
-   without a location prompt; deny permission and verify settings recovery.
-3. On iOS and Android phones, explicitly run the two-minute location check,
-   observe encrypted probe success and background callbacks, then verify stop,
-   sign-out, expiry and relaunch cleanup. Record device/OS and actual outcomes.
-   iOS 16 and Android 11 hardware coverage is still required.
-4. Supply a MapTiler key to verify real provider tiles and attribution. The
-   authored sample supports renderer testing but does not prove provider access.
+   codes through a supported hosted email configuration and set the minimum
+   password length to 12. Then verify signup, profile access and revoked-session
+   rejection against hosted Auth; local tests do not substitute for this check.
+2. Resume the local preview once command approval is available. On the iOS
+   simulator and Android emulator, sign in to the local test service, save a
+   profile, relaunch and verify secure restoration, sign out and verify private
+   screens close. Observe map rendering without a location prompt; deny
+   permission and verify settings recovery. Exercise the encrypted probe and
+   bounded check cleanup where supported, recording emulator limitations.
+3. Verify actual provider tiles, native map rendering and visible attribution
+   using the configured MapTiler key. A successful style/TileJSON response alone
+   does not establish a rendered map.
+
+Physical iOS/Android map and background-location observations are skipped for
+Day 5 by owner instruction. Before beta release, the original hardware matrix
+still requires physical minimum/current OS coverage, encrypted-storage behavior,
+background callbacks, stop/sign-out/expiry/relaunch cleanup and battery/OEM
+observations. See the [acceptance scope amendment](../day-01/acceptance-and-release.md#day-5-scope-amendment-14-september-2026).
 
 Native build logs and artifacts remain ignored under `tmp/day-05-*` and
 `apps/mobile/android/app/build/`; environment files and the private SQL are not

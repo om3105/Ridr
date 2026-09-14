@@ -4,7 +4,7 @@ Ridr is an iOS and Android app in development for group ride coordination: share
 
 ## Current milestone
 
-Days 1–3 establish the requirements, wireframes and architecture. Day 4 adds the Expo app, NestJS backend, private PostgreSQL/PostGIS database and local routing services. Day 5 implements verified email accounts, secure session restoration, editable profiles, a native map and explicit location permission checks. iOS and Android native builds pass; hosted account integration and interactive device feasibility checks still have prerequisites recorded in the [Day 5 handoff](docs/day-05/README.md). Ride creation and joining remain Day 6.
+Days 1–3 establish the requirements, wireframes and architecture. Day 4 adds the Expo app, NestJS backend, private PostgreSQL/PostGIS database and local routing services. Day 5 implements verified email accounts, secure session restoration, editable profiles, a native map and explicit location permission checks. iOS and Android native builds and GitHub checks pass. Hosted account integration and simulator checks remain pending in the [Day 5 handoff](docs/day-05/README.md); the owner skipped the physical map/background-location checks for this milestone. Ride creation and joining remain Day 6.
 
 The plan targets a 35-working-day beta, assuming two developers and part-time design/QA support. Subscription checkout is deferred to v1.1. Automatic crash detection is conditional on device and field validation and is not a promised production safety capability.
 
@@ -27,7 +27,7 @@ These documents cover all 34 source functional requirements, 15 supporting items
 
 ## Selected technology
 
-The workspace pins Expo 55 / React Native 0.83, TypeScript, NestJS 11 and PostgreSQL 18 / PostGIS 3.6. Day 5 uses Supabase Auth, SecureStore, MapLibre 11 and SQLCipher. MapTiler tiles are optional for the feasibility preview; without a key it uses an authored sample. Socket.IO and Supabase Storage remain selected for later features. Regional OSRM services run locally. Native configuration preserves iOS 16+ and Android 11+; physical minimum-OS and background-location proof is still pending.
+The workspace pins Expo 55 / React Native 0.83, TypeScript, NestJS 11 and PostgreSQL 18 / PostGIS 3.6. Day 5 uses Supabase Auth, SecureStore, MapLibre 11 and SQLCipher. The supplied MapTiler key is configured locally and its style/source requests succeed; without a key the preview uses an authored sample. Socket.IO and Supabase Storage remain selected for later features. Regional OSRM services run locally. Native configuration preserves iOS 16+ and Android 11+; physical minimum-OS and background-location evidence remains required before beta release.
 
 ## Run locally
 

@@ -83,6 +83,12 @@ The beta must remain useful with the detector disabled. The following gate permi
 
 Product-owner entries are future review checkpoints, not an assertion that anyone has already signed off or been contacted. Store approval timelines remain external to the work plan.
 
+### Day 5 scope amendment: 14 September 2026
+
+The owner explicitly instructed: “skip the physical iOS and Android map/background-location checks.” This supersedes the physical-device portion of the original Day 5 checkpoint above, including its first-pass hardware deadline. Record these checks as skipped, not passed. Native build compatibility, hosted account setup and simulator verification remain in Day 5 scope; their actual status is recorded in the [Day 5 handoff](../day-05/README.md).
+
+The beta device matrix and field-release requirements remain unchanged. The Day 5 waiver does not establish minimum-OS runtime compatibility, real background-location continuity, battery performance or OEM behavior on physical phones.
+
 ## Evidence and release blocker rules
 
 Record results as `test ID | build | device/OS | dataset/network | expected | observed | pass/fail | evidence link | issue ID`. Attach screenshots for UI states, event/latency logs for sync, and configuration evidence for storage/access. Redact private locations, tokens, and contact data from shared evidence.
