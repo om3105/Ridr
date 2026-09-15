@@ -11,6 +11,7 @@ test('configuration uses bounded local defaults', () => {
     port: 3000,
     databaseUrl: valid.DATABASE_URL,
     corsOrigins: [],
+    rideLimits: { accountPerMinute: 30, ipPerMinute: 120 },
   });
 });
 
@@ -36,6 +37,16 @@ test('rejects invalid ports, wildcard origins, and ambiguous configuration', () 
   }
   assert.throws(() => readConfig({ ...valid, NODE_ENV: 'staging' }), /NODE_ENV/);
   assert.throws(() => readConfig({ ...valid, API_HOST: 'localhost/path' }), /API_HOST/);
+  for (const limit of ['0', '-1', '1.5', '1e3', '10001', '']) {
+    assert.throws(
+      () => readConfig({ ...valid, INVITE_ACCOUNT_PER_MINUTE: limit }),
+      /INVITE_ACCOUNT_PER_MINUTE/,
+    );
+    assert.throws(
+      () => readConfig({ ...valid, INVITE_IP_PER_MINUTE: limit }),
+      /INVITE_IP_PER_MINUTE/,
+    );
+  }
 });
 
 test('rejects missing or invalid database URLs without including secrets in errors', () => {

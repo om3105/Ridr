@@ -1,9 +1,12 @@
+import type { RideLimits } from './ride-limits.js';
+
 export interface ApiConfig {
   environment: 'development' | 'test' | 'production';
   host: string;
   port: number;
   databaseUrl: string;
   corsOrigins: string[];
+  rideLimits: RideLimits;
   auth?: AuthConfig;
 }
 
@@ -48,6 +51,16 @@ export function readConfig(env: NodeJS.ProcessEnv): ApiConfig {
   }
 
   const databaseUrl = postgresUrl(env.DATABASE_URL, 'DATABASE_URL');
+  const limit = (name: string, fallback: number) => {
+    const raw = env[name] ?? String(fallback);
+    if (!/^[1-9][0-9]{0,4}$/.test(raw) || Number(raw) > 10000)
+      throw new Error(`${name} must be an integer between 1 and 10000.`);
+    return Number(raw);
+  };
+  const rideLimits = {
+    accountPerMinute: limit('INVITE_ACCOUNT_PER_MINUTE', 30),
+    ipPerMinute: limit('INVITE_IP_PER_MINUTE', 120),
+  };
 
   let auth: AuthConfig | undefined;
   if (env.SUPABASE_AUTH_URL || env.AUTH_DATABASE_URL || env.SUPABASE_JWT_SECRET) {
@@ -108,6 +121,7 @@ export function readConfig(env: NodeJS.ProcessEnv): ApiConfig {
     port,
     databaseUrl,
     corsOrigins: [...new Set(corsOrigins)],
+    rideLimits,
     ...(auth ? { auth } : {}),
   };
 }

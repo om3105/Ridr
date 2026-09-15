@@ -12,7 +12,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
-    "test:profiles": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/profiles.integration.js"
+    "test:profiles": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/profiles.integration.js",
+    "test:rides": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/rides.integration.js"
   },
   "dependencies": {
     "@nestjs/common": "11.2.3",

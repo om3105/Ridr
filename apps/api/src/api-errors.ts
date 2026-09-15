@@ -18,6 +18,14 @@ export function unauthenticated(): ApiError {
   return new ApiError(401, 'UNAUTHENTICATED', 'Sign in again to continue.');
 }
 
+export function inviteUnavailable(): ApiError {
+  return new ApiError(
+    404,
+    'INVITE_UNAVAILABLE',
+    'This invitation is unavailable. Ask the leader for a new one.',
+  );
+}
+
 export function unavailable(): ApiError {
   return new ApiError(
     503,

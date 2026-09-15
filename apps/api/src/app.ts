@@ -15,6 +15,10 @@ import type { AccountServices } from './accounts.js';
 import { PostgresSessions, SupabaseTokenVerifier } from './auth.js';
 import { PostgresProfiles } from './profiles.js';
 import { ApiErrorFilter } from './api-errors.js';
+import { RIDES, RideController, type RideServices } from './rides.js';
+import type { RideStore } from './ride-types.js';
+import { PostgresRides } from './ride-store.js';
+import { RideLimiter } from './ride-limits.js';
 
 @Injectable()
 class DatabaseLifecycle implements OnApplicationShutdown {
@@ -39,9 +43,23 @@ class AccountLifecycle implements OnApplicationShutdown {
 @Module({})
 class AppModule {}
 
+@Injectable()
+class RideLifecycle implements OnApplicationShutdown {
+  constructor(@Inject(RIDES) private readonly rides: RideServices | null) {}
+
+  async onApplicationShutdown(): Promise<void> {
+    await this.rides?.store.close();
+  }
+}
+
 export async function createApp(
   config: ApiConfig,
-  options: { database?: DatabaseHealth; logSink?: LogSink; accounts?: AccountServices } = {},
+  options: {
+    database?: DatabaseHealth;
+    logSink?: LogSink;
+    accounts?: AccountServices;
+    rides?: RideStore;
+  } = {},
 ): Promise<INestApplication> {
   const logger = new OperationalLogger(options.logSink);
   const database = options.database ?? new PostgresHealth(config.databaseUrl, logger);
@@ -53,15 +71,30 @@ export async function createApp(
     );
     accounts = { verifier, profiles: new PostgresProfiles(config.databaseUrl, verifier, logger) };
   }
+  const rideStore =
+    options.rides ??
+    (accounts && config.auth
+      ? new PostgresRides(config.databaseUrl, accounts.verifier, logger)
+      : null);
+  const rides: RideServices | null =
+    accounts && rideStore
+      ? {
+          verifier: accounts.verifier,
+          store: rideStore,
+          limiter: new RideLimiter(config.rideLimits),
+        }
+      : null;
   const app = await NestFactory.create(
     {
       module: AppModule,
-      controllers: [HealthController, AccountController],
+      controllers: [HealthController, AccountController, RideController],
       providers: [
         { provide: DATABASE_HEALTH, useValue: database },
         DatabaseLifecycle,
         { provide: ACCOUNTS, useValue: accounts },
         AccountLifecycle,
+        { provide: RIDES, useValue: rides },
+        RideLifecycle,
         HealthGateway,
       ],
     },
@@ -71,7 +104,7 @@ export async function createApp(
   app.enableCors({
     origin: config.corsOrigins,
     credentials: false,
-    exposedHeaders: ['ETag', 'X-Request-Id'],
+    exposedHeaders: ['ETag', 'X-Request-Id', 'Retry-After'],
   });
   app.enableShutdownHooks();
   app.useGlobalFilters(new ApiErrorFilter(logger));
