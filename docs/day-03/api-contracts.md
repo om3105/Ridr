@@ -51,6 +51,22 @@ A stationary action includes `motion` and `capturedAt` in its body. The schema e
 
 Write authorization is evaluated again inside the committing transaction. A preview or earlier snapshot is never a reservation.
 
+Day 6 implements creation, invitation preview/join, the current-member snapshot,
+the caller's ride collection, and Lobby invitation replacement/revocation. Its
+snapshot is `{ride,membership,members}`; the fuller snapshot in the table remains
+the target for later location, pairing and real-time milestones. Creation also
+returns `invite: {id,code?,url?,expiresAt,tokenAvailable}`. Preview returns the
+opaque `rideId` needed for explicit join, without granting membership. These
+additions clarify the original Day 3 response omissions.
+
+`GET /rides?limit=&cursor=` returns only the caller's current Lobby/Active
+memberships as `{items:[{ride,membership}],nextCursor}`. Day 6 invitation replacement
+accepts exactly `{rotate:true}` and requires the ride revision; it returns the same
+invitation shape as creation. Active-ride replacement returns `409 STATE_CONFLICT`
+until the later motion guard is implemented. The Active request shape below stays
+the future contract. Raw invitation credentials are omitted on receipt replay;
+receiving a link, QR or preview never joins a ride or enables location sharing.
+
 | Method/path | Request → response | Authorization, concurrency and failure rules |
 |---|---|---|
 | `POST /rides` | `{name,transport}` → `201 {ride,membership}` | Verified account; create Lobby and leader atomically, sharing off. Lobby memberships do not claim an active-ride guard; start checks all participants atomically. No `If-Match`. |

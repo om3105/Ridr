@@ -2,27 +2,34 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { colors } from '../src/theme';
 import { AuthProvider } from '../src/auth/provider';
+import { RideProvider } from '../src/rides/provider';
 
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <StatusBar style="dark" />
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: colors.paper },
-          headerTintColor: colors.ink,
-          headerShadowVisible: false,
-          contentStyle: { backgroundColor: colors.paper },
-          headerBackTitle: 'Home',
-        }}
-      >
-        <Stack.Screen name="index" options={{ headerShown: false, title: 'Ridr' }} />
-        <Stack.Screen name="environment" options={{ title: 'Test environment' }} />
-        <Stack.Screen name="account" options={{ title: 'Your account' }} />
-        <Stack.Screen name="profile" options={{ title: 'Your profile' }} />
-        <Stack.Screen name="map" options={{ title: 'Explore the map' }} />
-        <Stack.Screen name="permissions" options={{ title: 'Permissions & device checks' }} />
-      </Stack>
+      <RideProvider>
+        <StatusBar style="dark" />
+        <Stack
+          screenOptions={{
+            headerStyle: { backgroundColor: colors.paper },
+            headerTintColor: colors.ink,
+            headerShadowVisible: false,
+            contentStyle: { backgroundColor: colors.paper },
+            headerBackTitle: 'Home',
+          }}
+        >
+          <Stack.Screen name="index" options={{ headerShown: false, title: 'Ridr' }} />
+          <Stack.Screen name="environment" options={{ title: 'Test environment' }} />
+          <Stack.Screen name="account" options={{ title: 'Your account' }} />
+          <Stack.Screen name="profile" options={{ title: 'Your profile' }} />
+          <Stack.Screen name="map" options={{ title: 'Explore the map' }} />
+          <Stack.Screen name="permissions" options={{ title: 'Permissions & device checks' }} />
+          <Stack.Screen name="rides" options={{ title: 'Your rides' }} />
+          <Stack.Screen name="create" options={{ title: 'Create a ride' }} />
+          <Stack.Screen name="join" options={{ title: 'Join a ride' }} />
+          <Stack.Screen name="ride" options={{ title: 'Your ride' }} />
+        </Stack>
+      </RideProvider>
     </AuthProvider>
   );
 }

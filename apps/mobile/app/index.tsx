@@ -55,19 +55,27 @@ export default function HomeScreen() {
               Hello, {auth.profile.displayName}.
             </Text>
             <Text style={styles.detail}>
-              Your account is ready. Explore the map and choose what your phone can share.
+              Create a ride, join your people, or return to your group.
             </Text>
             <Notice>
-              Location sharing is off. Opening a map or signing in never starts tracking.
+              Opening a map or signing in never starts location tracking.
             </Notice>
             {auth.profile.activeMembership && (
               <Notice>
-                Your account has an active ride. Ride controls will become available in the ride
-                milestone.
+                Your account has an active ride. Open Your rides to return to the group.
               </Notice>
             )}
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Make yourself at home</Text>
+              <Text style={styles.cardTitle}>Ride together</Text>
+              <Link href="/rides" style={styles.link}>
+                Your rides →
+              </Link>
+              <Link href="/create" style={styles.link}>
+                Create a ride →
+              </Link>
+              <Link href="/join" style={styles.link}>
+                Join with code, link or QR →
+              </Link>
               <Link href="./map" style={styles.link}>
                 Explore the map →
               </Link>
@@ -193,7 +201,7 @@ export default function HomeScreen() {
           Test environment details ↗
         </Link>
         <Text style={styles.detail}>
-          Ride groups and live coordination will follow in the next milestones.
+          Ride start controls and live coordination will follow in the next milestones.
         </Text>
       </Page>
     </SafeAreaView>

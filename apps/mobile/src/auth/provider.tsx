@@ -11,6 +11,7 @@ import {
 import { AppState } from 'react-native';
 import { apiUrl } from '../connection';
 import { initializeDiagnostics, stopAndClearDiagnostics } from '../device/diagnostics';
+import { clearRideSession } from '../rides/private-session';
 import { createAuthClient, logoutIntentKey, recoveryIntentKey } from './client';
 import { ProfileError, requestProfile, type Profile } from './profile-api';
 import { sessionStorage } from './session-storage';
@@ -103,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setState(
           issue.code === 'unauthorized' || issue.code === 'blocked' ? 'blocked' : 'unavailable',
         );
+        clearRideSession();
         await stopDiagnostics().catch(() => undefined);
       }
     },
@@ -134,6 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           currentSession.current = next;
           setSession(next);
           if (previousId !== next?.user.id) {
+            if (previousId) clearRideSession();
             currentProfile.current = null;
             setProfile(null);
             privacyCleanup.current = stopDiagnostics();
@@ -256,6 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
+    clearRideSession();
     loggingOut.current = true;
     ++epoch.current;
     currentProfile.current = null;

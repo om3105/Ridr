@@ -24,6 +24,15 @@ const config: ExpoConfig = {
     'expo-router',
     'expo-dev-client',
     'expo-secure-store',
+    [
+      'expo-camera',
+      {
+        cameraPermission: 'Allow Ridr to scan a ride invitation when you choose Scan invite QR.',
+        microphonePermission: false,
+        recordAudioAndroid: false,
+        barcodeScannerEnabled: true,
+      },
+    ],
     '@maplibre/maplibre-react-native',
     ['expo-sqlite', { useSQLCipher: true }],
     [
