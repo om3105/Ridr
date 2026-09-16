@@ -47,3 +47,30 @@ export type InvitationPreview = {
   availableRoles: PhysicalRole[];
   expiresAt: string;
 };
+
+export type MotionContext = {
+  motion: {
+    state: 'stopped' | 'moving' | 'unknown';
+    source: 'speed' | 'activity' | 'unavailable';
+    observedAt: string;
+  };
+  capturedAt: string;
+};
+
+export type RideProposal = {
+  id: string;
+  kind: 'role_change' | 'leadership';
+  requesterMemberId: string;
+  targetMemberId: string;
+  physicalRole: PhysicalRole | null;
+  expiresAt: string;
+};
+export type RideManagement = RideMembership & { proposals: RideProposal[] };
+export type ProposalReceipt = { proposalId: string; expiresAt: string };
+export type LeaveRideResult = { leftAt: string; revision: number };
+export type StopSharingResult = {
+  enabled: boolean;
+  consentEpoch: number;
+  revision: number;
+  effectiveAt: string;
+};

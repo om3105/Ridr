@@ -8,13 +8,19 @@ import {
 import type {
   CreateRideResult,
   InvitationPreview,
+  LeaveRideResult,
   Membership,
+  MotionContext,
   PhysicalRole,
+  ProposalReceipt,
   Ride,
   RideCollection,
   RideInvitation,
+  RideManagement,
   RideMembership,
+  RideProposal,
   RideSnapshot,
+  StopSharingResult,
   Transport,
 } from './models';
 
@@ -128,7 +134,12 @@ function parseRide(value: unknown, expectedId?: string): Ride {
   return ride as unknown as Ride;
 }
 
-function parseMembership(value: unknown, ride: Ride, userId?: string): Membership {
+function parseMembership(
+  value: unknown,
+  ride: Ride,
+  userId?: string,
+  allowDeparted = false,
+): Membership {
   const member = object(value);
   if (
     !member ||
@@ -155,9 +166,9 @@ function parseMembership(value: unknown, ride: Ride, userId?: string): Membershi
     (member.role === 'leader' && member.physicalRole !== 'rider') ||
     (ride.transport !== 'motorcycle' && member.physicalRole === 'pillion') ||
     !timestamp(member.joinedAt) ||
-    member.leftAt !== null ||
+    (member.leftAt !== null && (!allowDeparted || !timestamp(member.leftAt))) ||
     typeof member.sharingEnabled !== 'boolean' ||
-    (ride.state !== 'active' && member.sharingEnabled) ||
+    ((ride.state !== 'active' || member.leftAt !== null) && member.sharingEnabled) ||
     !integer(member.consentEpoch, 0) ||
     !integer(member.revision)
   )
@@ -280,7 +291,7 @@ async function request<T>(
   options: RideClientOptions,
   requestOptions: {
     path: string;
-    method?: 'GET' | 'POST' | 'DELETE';
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
     body?: unknown;
     idempotencyKey?: string;
     revision?: number;
@@ -531,14 +542,22 @@ export async function listRides(
 
 export async function rotateInvitation(
   options: RideClientOptions,
-  change: { rideId: string; revision: number; idempotencyKey: string },
+  change: {
+    rideId: string;
+    revision: number;
+    idempotencyKey: string;
+    motionContext?: MotionContext;
+  },
 ): Promise<RideInvitation> {
   checkMutation(change.rideId, change.idempotencyKey);
   if (!integer(change.revision)) invalidRequest();
   return request(options, {
     path: `/v1/rides/${change.rideId}/invites`,
     method: 'POST',
-    body: { rotate: true },
+    body: {
+      rotate: true,
+      ...(change.motionContext ? checkedMotion(change.motionContext) : {}),
+    },
     idempotencyKey: change.idempotencyKey,
     revision: change.revision,
     parse: parseInvite,
@@ -552,6 +571,324 @@ export async function revokeInvitation(
   checkMutation(change.rideId, change.idempotencyKey);
   return request(options, {
     path: `/v1/rides/${change.rideId}/invites/current`,
+    method: 'DELETE',
+    idempotencyKey: change.idempotencyKey,
+    noContent: true,
+    parse: () => undefined,
+  });
+}
+
+function checkedMotion(context: MotionContext): MotionContext {
+  const motion = object(context.motion);
+  if (
+    !motion ||
+    !onlyKeys(motion, ['state', 'source', 'observedAt']) ||
+    !['stopped', 'moving', 'unknown'].includes(motion.state as string) ||
+    !['speed', 'activity', 'unavailable'].includes(motion.source as string) ||
+    !timestamp(motion.observedAt) ||
+    !timestamp(context.capturedAt)
+  )
+    invalidRequest();
+  return {
+    motion: {
+      state: motion.state as MotionContext['motion']['state'],
+      source: motion.source as MotionContext['motion']['source'],
+      observedAt: motion.observedAt,
+    },
+    capturedAt: context.capturedAt,
+  };
+}
+
+function parseProposal(value: unknown, ride: Ride): RideProposal {
+  const proposal = object(value);
+  if (
+    !proposal ||
+    !onlyKeys(proposal, [
+      'id',
+      'kind',
+      'requesterMemberId',
+      'targetMemberId',
+      'physicalRole',
+      'expiresAt',
+    ]) ||
+    !uuid(proposal.id) ||
+    !['role_change', 'leadership'].includes(proposal.kind as string) ||
+    !uuid(proposal.requesterMemberId) ||
+    !uuid(proposal.targetMemberId) ||
+    !timestamp(proposal.expiresAt) ||
+    (proposal.kind === 'leadership'
+      ? proposal.physicalRole !== null
+      : !physicalRole(proposal.physicalRole)) ||
+    (ride.transport !== 'motorcycle' && proposal.physicalRole === 'pillion')
+  )
+    invalidResponse();
+  return proposal as unknown as RideProposal;
+}
+
+function parseProposalReceipt(value: unknown): ProposalReceipt {
+  const data = object(value);
+  if (
+    !data ||
+    !onlyKeys(data, ['proposalId', 'expiresAt']) ||
+    !uuid(data.proposalId) ||
+    !timestamp(data.expiresAt)
+  )
+    invalidResponse();
+  return data as unknown as ProposalReceipt;
+}
+
+export async function getRideManagement(
+  options: RideClientOptions,
+  rideId: string,
+): Promise<RideManagement> {
+  if (!uuid(rideId)) invalidRequest();
+  return request(options, {
+    path: `/v1/rides/${rideId}/management`,
+    parse: (value) => {
+      const data = object(value);
+      if (!data || !onlyKeys(data, ['ride', 'membership', 'proposals'])) invalidResponse();
+      const ride = parseRide(data.ride, rideId);
+      const membership = parseMembership(data.membership, ride, options.userId, true);
+      if (!Array.isArray(data.proposals)) invalidResponse();
+      const proposals = data.proposals.map((value) => parseProposal(value, ride));
+      if (
+        new Set(proposals.map((proposal) => proposal.id)).size !== proposals.length ||
+        proposals.some(
+          (proposal) =>
+            proposal.requesterMemberId !== membership.id &&
+            proposal.targetMemberId !== membership.id,
+        ) ||
+        ((ride.state === 'ended' || membership.leftAt !== null) && proposals.length > 0)
+      )
+        invalidResponse();
+      return { ride, membership, proposals };
+    },
+  });
+}
+
+type RideCommand = { rideId: string; idempotencyKey: string };
+type StationaryChange = RideCommand & MotionContext & { revision: number };
+
+export async function startRide(
+  options: RideClientOptions,
+  change: StationaryChange,
+): Promise<Ride> {
+  checkMutation(change.rideId, change.idempotencyKey);
+  if (!integer(change.revision)) invalidRequest();
+  return request(options, {
+    path: `/v1/rides/${change.rideId}/start`,
+    method: 'POST',
+    body: checkedMotion(change),
+    revision: change.revision,
+    idempotencyKey: change.idempotencyKey,
+    parse: (value) => {
+      const ride = parseRide(value, change.rideId);
+      if (ride.state !== 'active') invalidResponse();
+      return ride;
+    },
+  });
+}
+
+export async function endRide(
+  options: RideClientOptions,
+  change: RideCommand & {
+    reason: 'completed' | 'cancelled';
+    capturedAt: string;
+    consentEpoch: number;
+  },
+): Promise<Ride> {
+  checkMutation(change.rideId, change.idempotencyKey);
+  if (
+    !['completed', 'cancelled'].includes(change.reason) ||
+    !timestamp(change.capturedAt) ||
+    !integer(change.consentEpoch, 0)
+  )
+    invalidRequest();
+  return request(options, {
+    path: `/v1/rides/${change.rideId}/end`,
+    method: 'POST',
+    body: {
+      reason: change.reason,
+      capturedAt: change.capturedAt,
+      consentEpoch: change.consentEpoch,
+    },
+    idempotencyKey: change.idempotencyKey,
+    parse: (value) => {
+      const ride = parseRide(value, change.rideId);
+      if (ride.state !== 'ended') invalidResponse();
+      return ride;
+    },
+  });
+}
+
+type PrivacyStop = RideCommand & { stoppedAt: string; consentEpoch: number };
+
+function checkedPrivacyStop(change: PrivacyStop) {
+  checkMutation(change.rideId, change.idempotencyKey);
+  if (!timestamp(change.stoppedAt) || !integer(change.consentEpoch, 0)) invalidRequest();
+  return { stoppedAt: change.stoppedAt, consentEpoch: change.consentEpoch };
+}
+
+export async function leaveRide(
+  options: RideClientOptions,
+  change: PrivacyStop,
+): Promise<LeaveRideResult> {
+  const body = checkedPrivacyStop(change);
+  return request(options, {
+    path: `/v1/rides/${change.rideId}/leave`,
+    method: 'POST',
+    body,
+    idempotencyKey: change.idempotencyKey,
+    parse: (value) => {
+      const data = object(value);
+      if (
+        !data ||
+        !onlyKeys(data, ['leftAt', 'revision']) ||
+        !timestamp(data.leftAt) ||
+        !integer(data.revision)
+      )
+        invalidResponse();
+      return data as unknown as LeaveRideResult;
+    },
+  });
+}
+
+export async function stopRideSharing(
+  options: RideClientOptions,
+  change: PrivacyStop,
+): Promise<StopSharingResult> {
+  const body = { enabled: false, ...checkedPrivacyStop(change) };
+  return request(options, {
+    path: `/v1/rides/${change.rideId}/sharing`,
+    method: 'PUT',
+    body,
+    idempotencyKey: change.idempotencyKey,
+    parse: (value) => {
+      const data = object(value);
+      if (
+        !data ||
+        !onlyKeys(data, ['enabled', 'consentEpoch', 'revision', 'effectiveAt']) ||
+        typeof data.enabled !== 'boolean' ||
+        !integer(data.consentEpoch, 0) ||
+        !integer(data.revision) ||
+        !timestamp(data.effectiveAt)
+      )
+        invalidResponse();
+      return data as unknown as StopSharingResult;
+    },
+  });
+}
+
+export async function proposeRole(
+  options: RideClientOptions,
+  change: StationaryChange & { targetMemberId: string; physicalRole: PhysicalRole },
+): Promise<ProposalReceipt> {
+  checkMutation(change.rideId, change.idempotencyKey);
+  if (
+    !integer(change.revision) ||
+    !uuid(change.targetMemberId) ||
+    !physicalRole(change.physicalRole)
+  )
+    invalidRequest();
+  return request(options, {
+    path: `/v1/rides/${change.rideId}/role-proposals`,
+    method: 'POST',
+    body: {
+      targetMemberId: change.targetMemberId,
+      physicalRole: change.physicalRole,
+      ...checkedMotion(change),
+    },
+    revision: change.revision,
+    idempotencyKey: change.idempotencyKey,
+    parse: parseProposalReceipt,
+  });
+}
+
+export async function proposeLeadership(
+  options: RideClientOptions,
+  change: StationaryChange & { targetMemberId: string },
+): Promise<ProposalReceipt> {
+  checkMutation(change.rideId, change.idempotencyKey);
+  if (!integer(change.revision) || !uuid(change.targetMemberId)) invalidRequest();
+  return request(options, {
+    path: `/v1/rides/${change.rideId}/leadership-proposals`,
+    method: 'POST',
+    body: { targetMemberId: change.targetMemberId, ...checkedMotion(change) },
+    revision: change.revision,
+    idempotencyKey: change.idempotencyKey,
+    parse: parseProposalReceipt,
+  });
+}
+
+type AcceptProposal = MotionContext & {
+  ride: Ride;
+  proposal: RideProposal;
+  idempotencyKey: string;
+};
+
+function checkedAcceptance(change: AcceptProposal, kind: RideProposal['kind']) {
+  checkMutation(change.ride.id, change.idempotencyKey);
+  if (
+    !uuid(change.proposal.id) ||
+    !uuid(change.proposal.targetMemberId) ||
+    change.proposal.kind !== kind
+  )
+    invalidRequest();
+  return checkedMotion(change);
+}
+
+export async function acceptRole(
+  options: RideClientOptions,
+  change: AcceptProposal,
+): Promise<Membership> {
+  const body = checkedAcceptance(change, 'role_change');
+  if (!physicalRole(change.proposal.physicalRole)) invalidRequest();
+  return request(options, {
+    path: `/v1/rides/${change.ride.id}/role-proposals/${change.proposal.id}/accept`,
+    method: 'POST',
+    body,
+    idempotencyKey: change.idempotencyKey,
+    parse: (value) => {
+      const member = parseMembership(value, change.ride, options.userId);
+      if (
+        member.id !== change.proposal.targetMemberId ||
+        member.physicalRole !== change.proposal.physicalRole
+      )
+        invalidResponse();
+      return member;
+    },
+  });
+}
+
+export async function acceptLeadership(
+  options: RideClientOptions,
+  change: AcceptProposal,
+): Promise<Ride> {
+  const body = checkedAcceptance(change, 'leadership');
+  return request(options, {
+    path: `/v1/rides/${change.ride.id}/leadership-proposals/${change.proposal.id}/accept`,
+    method: 'POST',
+    body,
+    idempotencyKey: change.idempotencyKey,
+    parse: (value) => {
+      const ride = parseRide(value, change.ride.id);
+      if (ride.state === 'ended' || ride.leaderMemberId !== change.proposal.targetMemberId)
+        invalidResponse();
+      return ride;
+    },
+  });
+}
+
+export async function cancelRideProposal(
+  options: RideClientOptions,
+  change: RideCommand & { kind: RideProposal['kind']; proposalId: string },
+): Promise<void> {
+  checkMutation(change.rideId, change.idempotencyKey);
+  if (!uuid(change.proposalId) || !['role_change', 'leadership'].includes(change.kind))
+    invalidRequest();
+  const resource = change.kind === 'role_change' ? 'role-proposals' : 'leadership-proposals';
+  return request(options, {
+    path: `/v1/rides/${change.rideId}/${resource}/${change.proposalId}`,
     method: 'DELETE',
     idempotencyKey: change.idempotencyKey,
     noContent: true,
