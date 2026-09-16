@@ -201,7 +201,8 @@ export default function HomeScreen() {
           Test environment details ↗
         </Link>
         <Text style={styles.detail}>
-          Ride start controls and live coordination will follow in the next milestones.
+          Open a ride to start, end or manage your group. Live location and messaging are coming in
+          later milestones.
         </Text>
       </Page>
     </SafeAreaView>

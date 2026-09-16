@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Link } from 'expo-router';
 import { Text } from 'react-native';
 import { useAuth } from '../auth/provider';
@@ -8,11 +16,14 @@ import type { RideClientOptions } from './api';
 import { RideError } from './api';
 import type { RideInvitation } from './models';
 import { rideSessionGeneration } from './private-session';
+import type { SafetyAction } from './safety-action';
 
 type RideContextValue = {
   run<T>(request: (options: RideClientOptions) => Promise<T>): Promise<T>;
   invitations: Record<string, RideInvitation>;
   rememberInvitation(rideId: string, invitation: RideInvitation | null): void;
+  safetyActions: Record<string, SafetyAction>;
+  rememberSafetyAction(rideId: string, action: SafetyAction | null): void;
 };
 const RideContext = createContext<RideContextValue | null>(null);
 
@@ -25,12 +36,28 @@ export function RideProvider({ children }: { children: ReactNode }) {
 function AccountRideProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const current = useRef(auth);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   current.current = auth;
   const [invitations, setInvitations] = useState<Record<string, RideInvitation>>({});
+  const [safetyActions, setSafetyActions] = useState<Record<string, SafetyAction>>({});
+  const rememberSafetyAction = useCallback((rideId: string, action: SafetyAction | null) => {
+    setSafetyActions((existing) => {
+      const next = { ...existing };
+      if (action) next[rideId] = action;
+      else delete next[rideId];
+      return next;
+    });
+  }, []);
   const run = useCallback(async <T,>(request: (options: RideClientOptions) => Promise<T>) => {
     const account = current.current;
     const generation = rideSessionGeneration();
-    if (account.state !== 'ready' || !account.session || !account.profile) {
+    if (!mounted.current || account.state !== 'ready' || !account.session || !account.profile) {
       throw new Error('Sign in before opening your rides.');
     }
     let result: T;
@@ -51,6 +78,7 @@ function AccountRideProvider({ children }: { children: ReactNode }) {
       throw error;
     }
     if (
+      !mounted.current ||
       generation !== rideSessionGeneration() ||
       current.current.state !== 'ready' ||
       current.current.profile?.id !== account.profile.id
@@ -68,7 +96,9 @@ function AccountRideProvider({ children }: { children: ReactNode }) {
     });
   }, []);
   return (
-    <RideContext.Provider value={{ run, invitations, rememberInvitation }}>
+    <RideContext.Provider
+      value={{ run, invitations, rememberInvitation, safetyActions, rememberSafetyAction }}
+    >
       {children}
     </RideContext.Provider>
   );

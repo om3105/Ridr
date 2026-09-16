@@ -2,11 +2,12 @@ import Constants from 'expo-constants';
 import { randomUUID } from 'expo-crypto';
 import { Link, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { Share, Text, View } from 'react-native';
+import { AppState, Share, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { Button, Notice, Page, styles } from '../src/auth/components';
 import {
   getRide,
+  getRideManagement,
   previewInvitation,
   revokeInvitation,
   rotateInvitation,
@@ -14,7 +15,10 @@ import {
 } from '../src/rides/api';
 import { roleNames, transportNames } from '../src/rides/components';
 import { parseInvitationLink } from '../src/rides/invitations';
-import type { RideSnapshot } from '../src/rides/models';
+import type { MotionContext, RideManagement, RideSnapshot } from '../src/rides/models';
+import { RideControls } from '../src/rides/RideControls';
+import { checkStationary, stopMotionCheck } from '../src/rides/motion-check';
+import { stopAndClearDiagnostics } from '../src/device/diagnostics';
 import { RideAccess, useRides } from '../src/rides/provider';
 import { useScreenTask } from '../src/rides/use-screen-task';
 
@@ -31,22 +35,46 @@ function Lobby({ id }: { id: string }) {
   const { run, invitations, rememberInvitation } = useRides();
   const capture = useScreenTask();
   const [snapshot, setSnapshot] = useState<RideSnapshot | null>(null);
+  const [management, setManagement] = useState<RideManagement | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [uncertain, setUncertain] = useState(false);
   const sequence = useRef(0);
+  const fetching = useRef(false);
+  const stoppedFor = useRef<string | null>(null);
   const operation = useRef<{
     kind: 'rotate' | 'revoke';
     idempotencyKey: string;
     revision: number;
+    motionContext?: MotionContext;
   } | null>(null);
   const invite = invitations[id];
   const load = useCallback(async () => {
+    if (fetching.current || AppState.currentState !== 'active') return;
+    fetching.current = true;
     const current = capture();
     const request = ++sequence.current;
     setLoading(true);
     try {
+      const status = await run((options) => getRideManagement(options, id));
+      if (!current() || request !== sequence.current) return;
+      setManagement(status);
+      if (status.ride.state === 'ended' || status.membership.leftAt !== null) {
+        setSnapshot(null);
+        rememberInvitation(id, null);
+        if (stoppedFor.current !== id) {
+          stoppedFor.current = id;
+          stopMotionCheck();
+          void stopAndClearDiagnostics().catch(() => {
+            if (current())
+              setMessage(
+                'This ride has ended or you have left. Turn off Ridr location access in Settings if local cleanup failed.',
+              );
+          });
+        }
+        return;
+      }
       const result = await run((options) => getRide(options, id));
       if (current() && request === sequence.current) setSnapshot(result);
     } catch (error) {
@@ -56,32 +84,58 @@ function Lobby({ id }: { id: string }) {
         setMessage(error instanceof Error ? error.message : 'Your ride could not be loaded.');
       }
     } finally {
-      if (current() && request === sequence.current) setLoading(false);
+      fetching.current = false;
+      if (request === sequence.current) setLoading(false);
     }
   }, [run, capture, id, rememberInvitation]);
   useFocusEffect(
     useCallback(() => {
       void load();
+      const timer = setInterval(() => {
+        void load();
+      }, 5000);
+      const listener = AppState.addEventListener('change', (state) => {
+        if (state === 'active') void load();
+        else stopMotionCheck();
+      });
+      return () => {
+        clearInterval(timer);
+        listener.remove();
+        stopMotionCheck();
+      };
     }, [load]),
   );
 
   async function changeInvitation(kind: 'rotate' | 'revoke') {
     if (busy || !snapshot) return;
     const current = capture();
-    operation.current ??= { kind, idempotencyKey: randomUUID(), revision: snapshot.ride.revision };
-    const pending = operation.current;
     setBusy(true);
-    setUncertain(true);
     setMessage('');
-    // The preceding invitation may be invalidated even if the response is lost.
-    rememberInvitation(id, null);
     try {
+      if (!operation.current) {
+        const motionContext =
+          kind === 'rotate' && snapshot.ride.state === 'active'
+            ? await checkStationary()
+            : undefined;
+        if (!current()) return;
+        operation.current = {
+          kind,
+          idempotencyKey: randomUUID(),
+          revision: snapshot.ride.revision,
+          motionContext,
+        };
+      }
+      const pending = operation.current;
+      setUncertain(true);
+      // The preceding invitation may be invalidated even if the response is lost.
+      rememberInvitation(id, null);
       if (pending.kind === 'rotate') {
         const result = await run((options) =>
           rotateInvitation(options, {
             rideId: id,
             revision: pending.revision,
             idempotencyKey: pending.idempotencyKey,
+            motionContext: pending.motionContext,
           }),
         );
         if (!current()) return;
@@ -145,9 +199,26 @@ function Lobby({ id }: { id: string }) {
   return (
     <Page>
       <Text accessibilityRole="header" style={styles.title}>
-        {snapshot?.ride.name ?? 'Your ride.'}
+        {management?.ride.name ?? snapshot?.ride.name ?? 'Your ride.'}
       </Text>
       {!!message && <Notice>{message}</Notice>}
+      {management && (
+        <>
+          {management.ride.state === 'ended' && (
+            <Notice>This ride has ended. Location sharing is off.</Notice>
+          )}
+          {management.membership.leftAt !== null && management.ride.state !== 'ended' && (
+            <Notice>You have left this ride. Your live access and sharing have ended.</Notice>
+          )}
+          <RideControls
+            management={management}
+            members={snapshot?.members ?? []}
+            onChanged={() => {
+              void load();
+            }}
+          />
+        </>
+      )}
       {snapshot && (
         <>
           <Text style={styles.detail}>
@@ -211,12 +282,14 @@ function Lobby({ id }: { id: string }) {
               {uncertain && (
                 <Notice>The change is unconfirmed. Retry it to recover the result safely.</Notice>
               )}
-              {snapshot.ride.state === 'lobby' && (
+              {snapshot.ride.state !== 'ended' && (
                 <Button
                   label={
                     uncertain && operation.current?.kind === 'rotate'
                       ? 'Retry invitation replacement'
-                      : 'Replace invitation'
+                      : snapshot.ride.state === 'active'
+                        ? 'Check speed and replace invitation'
+                        : 'Replace invitation'
                   }
                   secondary
                   busy={busy}
