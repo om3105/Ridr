@@ -83,7 +83,7 @@ export interface JoinRide {
   idempotencyKey: string;
 }
 
-export interface RotateInvite {
+export interface RotateInvite extends Partial<MotionContext> {
   revision: number;
   idempotencyKey: string;
 }
@@ -95,6 +95,90 @@ export interface RideStore {
   read(account: VerifiedAccount, rideId: string): Promise<RideSnapshot>;
   list(account: VerifiedAccount, query: { limit: number; cursor?: string }): Promise<RideList>;
   rotate(account: VerifiedAccount, rideId: string, change: RotateInvite): Promise<Invite>;
-  revoke(account: VerifiedAccount, rideId: string, change: { idempotencyKey: string }): Promise<void>;
+  revoke(
+    account: VerifiedAccount,
+    rideId: string,
+    change: { idempotencyKey: string },
+  ): Promise<void>;
+  start(account: VerifiedAccount, rideId: string, change: StartRide): Promise<Ride>;
+  end(account: VerifiedAccount, rideId: string, change: EndRide): Promise<Ride>;
+  leave(account: VerifiedAccount, rideId: string, change: StopSharing): Promise<LeftRide>;
+  stopSharing(account: VerifiedAccount, rideId: string, change: StopSharing): Promise<SharingState>;
+  management(account: VerifiedAccount, rideId: string): Promise<RideManagement>;
+  propose(
+    account: VerifiedAccount,
+    rideId: string,
+    kind: ProposalKind,
+    change: ProposeChange,
+  ): Promise<ProposedChange>;
+  accept(
+    account: VerifiedAccount,
+    rideId: string,
+    proposalId: string,
+    kind: ProposalKind,
+    change: AcceptChange,
+  ): Promise<Ride | Membership>;
+  cancel(
+    account: VerifiedAccount,
+    rideId: string,
+    proposalId: string,
+    kind: ProposalKind,
+    change: Command,
+  ): Promise<void>;
   close(): Promise<void>;
+}
+
+export interface Command {
+  idempotencyKey: string;
+}
+export interface MotionContext {
+  motion: {
+    state: 'stopped' | 'moving' | 'unknown';
+    source: 'speed' | 'activity' | 'unavailable';
+    observedAt: string;
+  };
+  capturedAt: string;
+}
+export interface StartRide extends MotionContext, Command {
+  revision: number;
+}
+export interface EndRide extends Command {
+  reason: 'completed' | 'cancelled';
+  capturedAt: string;
+  consentEpoch: number;
+}
+export interface StopSharing extends Command {
+  stoppedAt: string;
+  consentEpoch: number;
+}
+export interface LeftRide {
+  leftAt: string;
+  revision: number;
+}
+export interface SharingState {
+  enabled: boolean;
+  consentEpoch: number;
+  revision: number;
+  effectiveAt: string;
+}
+export type ProposalKind = 'role_change' | 'leadership';
+export interface ProposeChange extends StartRide {
+  targetMemberId: string;
+  physicalRole?: PhysicalRole;
+}
+export interface AcceptChange extends MotionContext, Command {}
+export interface ProposedChange {
+  proposalId: string;
+  expiresAt: string;
+}
+export interface Proposal {
+  id: string;
+  kind: ProposalKind;
+  requesterMemberId: string;
+  targetMemberId: string;
+  physicalRole: PhysicalRole | null;
+  expiresAt: string;
+}
+export interface RideManagement extends RideMembership {
+  proposals: Proposal[];
 }

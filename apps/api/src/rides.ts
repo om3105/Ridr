@@ -7,6 +7,7 @@ import {
   Inject,
   Param,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -14,7 +15,18 @@ import {
 import type { Request, Response } from 'express';
 import { ApiError, inviteUnavailable, unavailable } from './api-errors.js';
 import { UUID, validDisplayName, type TokenVerifier } from './auth.js';
-import type { CreateRide, JoinRide, RideStore } from './ride-types.js';
+import type {
+  CreateRide,
+  JoinRide,
+  RideStore,
+  MotionContext,
+  StartRide,
+  EndRide,
+  StopSharing,
+  ProposeChange,
+  AcceptChange,
+  ProposalKind,
+} from './ride-types.js';
 import { RideLimiter, rateLimited } from './ride-limits.js';
 
 export const RIDES = Symbol('RIDES');
@@ -48,11 +60,7 @@ export function rideId(value: string): string {
 
 export function rideRevision(value: string | undefined): number {
   if (value === undefined)
-    throw new ApiError(
-      428,
-      'PRECONDITION_REQUIRED',
-      'Reload the ride before replacing its invitation.',
-    );
+    throw new ApiError(428, 'PRECONDITION_REQUIRED', 'Reload the ride before making this change.');
   const match = /^"([1-9][0-9]*)"$/.exec(value);
   if (!match || !Number.isSafeInteger(Number(match[1])))
     throw new ApiError(
@@ -128,6 +136,105 @@ export function parseRideList(query: Record<string, unknown>): { limit: number; 
     limit: Number(value),
     ...(query.cursor === undefined ? {} : { cursor: query.cursor as string }),
   };
+}
+
+function timestamp(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    !/^(?!0000)\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value) ||
+    !Number.isFinite(Date.parse(value)) ||
+    new Date(value).toISOString() !== (value.includes('.') ? value : value.replace('Z', '.000Z'))
+  )
+    throw new ApiError(400, 'INVALID_REQUEST', 'Use a valid UTC timestamp.');
+  return value;
+}
+function consentEpoch(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)
+    throw new ApiError(400, 'INVALID_REQUEST', 'Use the last acknowledged consent epoch.');
+  return value;
+}
+export function parseMotion(value: Record<string, unknown>): MotionContext {
+  const motion = object(value.motion);
+  exact(motion, ['state', 'source', 'observedAt']);
+  if (
+    !['stopped', 'moving', 'unknown'].includes(motion.state as string) ||
+    !['speed', 'activity', 'unavailable'].includes(motion.source as string)
+  )
+    throw new ApiError(400, 'INVALID_REQUEST', 'Use a supported motion state and source.');
+  return {
+    motion: {
+      state: motion.state as MotionContext['motion']['state'],
+      source: motion.source as MotionContext['motion']['source'],
+      observedAt: timestamp(motion.observedAt),
+    },
+    capturedAt: timestamp(value.capturedAt),
+  };
+}
+export function parseStart(
+  body: unknown,
+  key: string | undefined,
+  expected: string | undefined,
+): StartRide {
+  const value = object(body);
+  exact(value, ['motion', 'capturedAt']);
+  return {
+    ...parseMotion(value),
+    revision: rideRevision(expected),
+    idempotencyKey: commandKey(key),
+  };
+}
+export function parseEnd(body: unknown, key: string | undefined): EndRide {
+  const value = object(body);
+  exact(value, ['reason', 'capturedAt', 'consentEpoch']);
+  if (value.reason !== 'completed' && value.reason !== 'cancelled')
+    throw new ApiError(400, 'INVALID_REQUEST', 'Choose completed or cancelled.');
+  return {
+    reason: value.reason,
+    capturedAt: timestamp(value.capturedAt),
+    consentEpoch: consentEpoch(value.consentEpoch),
+    idempotencyKey: commandKey(key),
+  };
+}
+export function parseStop(body: unknown, key: string | undefined, sharing = false): StopSharing {
+  const value = object(body);
+  exact(value, sharing ? ['enabled', 'stoppedAt', 'consentEpoch'] : ['stoppedAt', 'consentEpoch']);
+  if (sharing && value.enabled !== false)
+    throw new ApiError(400, 'INVALID_REQUEST', 'Only stopping sharing is available.');
+  return {
+    stoppedAt: timestamp(value.stoppedAt),
+    consentEpoch: consentEpoch(value.consentEpoch),
+    idempotencyKey: commandKey(key),
+  };
+}
+export function parseProposal(
+  body: unknown,
+  key: string | undefined,
+  expected: string | undefined,
+  kind: ProposalKind,
+): ProposeChange {
+  const value = object(body);
+  exact(
+    value,
+    kind === 'role_change'
+      ? ['targetMemberId', 'physicalRole', 'motion', 'capturedAt']
+      : ['targetMemberId', 'motion', 'capturedAt'],
+  );
+  if (typeof value.targetMemberId !== 'string')
+    throw new ApiError(400, 'INVALID_REQUEST', 'Choose a current member.');
+  if (kind === 'role_change' && value.physicalRole !== 'rider' && value.physicalRole !== 'pillion')
+    throw new ApiError(422, 'VALIDATION_FAILED', 'Choose Rider or Pillion.');
+  return {
+    ...parseMotion(value),
+    targetMemberId: rideId(value.targetMemberId),
+    ...(kind === 'role_change' ? { physicalRole: value.physicalRole as 'rider' | 'pillion' } : {}),
+    revision: rideRevision(expected),
+    idempotencyKey: commandKey(key),
+  };
+}
+export function parseAccept(body: unknown, key: string | undefined): AcceptChange {
+  const value = object(body);
+  exact(value, ['motion', 'capturedAt']);
+  return { ...parseMotion(value), idempotencyKey: commandKey(key) };
 }
 
 function json(contentType: string | undefined) {
@@ -236,13 +343,19 @@ export class RideController {
     const account = await this.actor(request, response, true);
     json(request.headers['content-type']);
     const value = object(body);
-    exact(value, ['rotate']);
+    exact(
+      value,
+      Object.hasOwn(value, 'motion') || Object.hasOwn(value, 'capturedAt')
+        ? ['rotate', 'motion', 'capturedAt']
+        : ['rotate'],
+    );
     if (value.rotate !== true)
       throw new ApiError(400, 'INVALID_REQUEST', 'Confirm invitation replacement.');
     return envelope(
       await this.services!.store.rotate(account, rideId(id), {
         revision: rideRevision(request.header('if-match')),
         idempotencyKey: commandKey(request.header('idempotency-key')),
+        ...(Object.hasOwn(value, 'motion') ? parseMotion(value) : {}),
       }),
       response,
     );
@@ -260,6 +373,207 @@ export class RideController {
     if (body !== undefined && body !== null)
       throw new ApiError(400, 'INVALID_REQUEST', 'This request does not accept a body.');
     await this.services!.store.revoke(account, rideId(id), {
+      idempotencyKey: commandKey(request.header('idempotency-key')),
+    });
+  }
+
+  @Get('rides/:rideId/management')
+  async management(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    const result = await this.services!.store.management(account, rideId(id));
+    return envelope(result, response, result.ride.revision);
+  }
+
+  @Post('rides/:rideId/start')
+  @HttpCode(200)
+  async start(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    json(request.headers['content-type']);
+    const result = await this.services!.store.start(
+      account,
+      rideId(id),
+      parseStart(body, request.header('idempotency-key'), request.header('if-match')),
+    );
+    return envelope(result, response, result.revision);
+  }
+
+  @Post('rides/:rideId/end')
+  @HttpCode(200)
+  async end(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    json(request.headers['content-type']);
+    const result = await this.services!.store.end(
+      account,
+      rideId(id),
+      parseEnd(body, request.header('idempotency-key')),
+    );
+    return envelope(result, response, result.revision);
+  }
+
+  @Post('rides/:rideId/leave')
+  @HttpCode(200)
+  async leave(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    json(request.headers['content-type']);
+    const result = await this.services!.store.leave(
+      account,
+      rideId(id),
+      parseStop(body, request.header('idempotency-key')),
+    );
+    return envelope(result, response, result.revision);
+  }
+
+  @Put('rides/:rideId/sharing')
+  @HttpCode(200)
+  async stopSharing(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    json(request.headers['content-type']);
+    const result = await this.services!.store.stopSharing(
+      account,
+      rideId(id),
+      parseStop(body, request.header('idempotency-key'), true),
+    );
+    return envelope(result, response, result.revision);
+  }
+
+  @Post('rides/:rideId/role-proposals')
+  async proposeRole(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response, true);
+    json(request.headers['content-type']);
+    const result = await this.services!.store.propose(
+      account,
+      rideId(id),
+      'role_change',
+      parseProposal(
+        body,
+        request.header('idempotency-key'),
+        request.header('if-match'),
+        'role_change',
+      ),
+    );
+    return envelope(result, response);
+  }
+  @Post('rides/:rideId/role-proposals/:proposalId/accept')
+  @HttpCode(200)
+  async acceptRole(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('proposalId') proposal: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    json(request.headers['content-type']);
+    const result = await this.services!.store.accept(
+      account,
+      rideId(id),
+      rideId(proposal),
+      'role_change',
+      parseAccept(body, request.header('idempotency-key')),
+    );
+    return envelope(result, response, result.revision);
+  }
+  @Delete('rides/:rideId/role-proposals/:proposalId')
+  @HttpCode(204)
+  async cancelRole(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('proposalId') proposal: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    if (body !== undefined && body !== null)
+      throw new ApiError(400, 'INVALID_REQUEST', 'This request does not accept a body.');
+    await this.services!.store.cancel(account, rideId(id), rideId(proposal), 'role_change', {
+      idempotencyKey: commandKey(request.header('idempotency-key')),
+    });
+  }
+
+  @Post('rides/:rideId/leadership-proposals')
+  async proposeLeadership(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response, true);
+    json(request.headers['content-type']);
+    const result = await this.services!.store.propose(
+      account,
+      rideId(id),
+      'leadership',
+      parseProposal(
+        body,
+        request.header('idempotency-key'),
+        request.header('if-match'),
+        'leadership',
+      ),
+    );
+    return envelope(result, response);
+  }
+  @Post('rides/:rideId/leadership-proposals/:proposalId/accept')
+  @HttpCode(200)
+  async acceptLeadership(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('proposalId') proposal: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    json(request.headers['content-type']);
+    const result = await this.services!.store.accept(
+      account,
+      rideId(id),
+      rideId(proposal),
+      'leadership',
+      parseAccept(body, request.header('idempotency-key')),
+    );
+    return envelope(result, response, result.revision);
+  }
+  @Delete('rides/:rideId/leadership-proposals/:proposalId')
+  @HttpCode(204)
+  async cancelLeadership(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('proposalId') proposal: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    if (body !== undefined && body !== null)
+      throw new ApiError(400, 'INVALID_REQUEST', 'This request does not accept a body.');
+    await this.services!.store.cancel(account, rideId(id), rideId(proposal), 'leadership', {
       idempotencyKey: commandKey(request.header('idempotency-key')),
     });
   }

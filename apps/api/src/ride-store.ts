@@ -1,3 +1,11 @@
+import * as lifecycle from './ride-management.js';
+import {
+  integer,
+  rideProjection,
+  memberProjection,
+  type RideRow,
+  type MemberRow,
+} from './ride-records.js';
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import type { PoolClient } from 'pg';
@@ -12,6 +20,17 @@ import type {
   JoinRide,
   Membership,
   PhysicalRole,
+  StartRide,
+  EndRide,
+  StopSharing,
+  LeftRide,
+  SharingState,
+  RideManagement,
+  ProposalKind,
+  ProposeChange,
+  AcceptChange,
+  Command,
+  ProposedChange,
   PreviewInvite,
   Ride,
   RideList,
@@ -22,93 +41,22 @@ import type {
   RotateInvite,
 } from './ride-types.js';
 
-interface RideRow {
-  id: string;
-  name: string;
-  transport: Ride['transport'];
-  state: Ride['state'];
-  leader_member_id: string;
-  created_at: Date;
-  started_at: Date | null;
-  ended_at: Date | null;
-  revision: string;
-  broadcast_seconds: 5 | 10 | 15;
-  straggler_metres: number;
-}
-
-interface MemberRow {
-  id: string;
-  ride_id: string;
-  user_id: string;
-  display_name: string;
-  physical_role: PhysicalRole;
-  joined_at: Date;
-  left_at: Date | null;
-  sharing: boolean;
-  consent_epoch: string;
-  revision: string;
-}
-
 interface Receipt<T> {
   request_hash: Buffer;
   operation: string;
   result: T;
 }
-
 const rideColumns = `id, name, transport, state, leader_member_id, created_at,
   started_at, ended_at, revision, broadcast_seconds, straggler_metres`;
 const codeAlphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-
-function integer(value: string): number {
-  const result = Number(value);
-  if (!Number.isSafeInteger(result) || result < 0) throw unavailable();
-  return result;
-}
-
 function hash(value: string): Buffer {
   return createHash('sha256').update(value).digest();
 }
-
 function requestHash(method: string, path: string, body: object): Buffer {
   return hash(JSON.stringify({ method, path, body }));
 }
-
 function notFound(): ApiError {
   return new ApiError(404, 'NOT_FOUND', 'Resource not found.');
-}
-
-function rideProjection(row: RideRow): Ride {
-  return {
-    id: row.id,
-    name: row.name,
-    transport: row.transport,
-    state: row.state,
-    leaderMemberId: row.leader_member_id,
-    createdAt: row.created_at.toISOString(),
-    startedAt: row.started_at?.toISOString() ?? null,
-    endedAt: row.ended_at?.toISOString() ?? null,
-    revision: integer(row.revision),
-    settings: {
-      broadcastIntervalSeconds: row.broadcast_seconds,
-      stragglerDistanceM: row.straggler_metres,
-    },
-  };
-}
-
-function memberProjection(row: MemberRow, ride: RideRow): Membership {
-  return {
-    id: row.id,
-    rideId: row.ride_id,
-    profileId: row.user_id,
-    displayName: row.display_name,
-    role: row.id === ride.leader_member_id ? 'leader' : row.physical_role,
-    physicalRole: row.physical_role,
-    joinedAt: row.joined_at.toISOString(),
-    leftAt: row.left_at?.toISOString() ?? null,
-    sharingEnabled: row.sharing,
-    consentEpoch: integer(row.consent_epoch),
-    revision: integer(row.revision),
-  };
 }
 
 function redactedInvite(invite: Invite): Invite {
@@ -428,7 +376,10 @@ export class PostgresRides implements RideStore {
   async rotate(account: VerifiedAccount, rideId: string, change: RotateInvite): Promise<Invite> {
     const path = `/v1/rides/${rideId}/invites`;
     const operation = `POST ${path}`;
-    const digest = requestHash('POST', path, { rotate: true });
+    const digest = requestHash('POST', path, {
+      rotate: true,
+      ...(change.motion ? { motion: change.motion, capturedAt: change.capturedAt } : {}),
+    });
     return this.transaction(account, async (client) => {
       await this.lockCommand(client, account, change.idempotencyKey);
       const row = await this.lockRide(client, rideId);
@@ -442,8 +393,19 @@ export class PostgresRides implements RideStore {
         digest,
       );
       if (replay) return replay;
-      if (row.state !== 'lobby')
-        throw new ApiError(409, 'STATE_CONFLICT', 'Invite rotation is available in the lobby.');
+      if (row.state === 'active') {
+        if (!change.motion || !change.capturedAt)
+          throw new ApiError(
+            409,
+            'MOTION_RESTRICTED',
+            'An active ride requires a fresh stopped motion check.',
+          );
+        const member = await this.currentMember(client, row, account);
+        await lifecycle.stationary(client, member.id, {
+          motion: change.motion,
+          capturedAt: change.capturedAt,
+        });
+      }
       if (integer(row.revision) !== change.revision) {
         throw new ApiError(
           412,
@@ -495,6 +457,187 @@ export class PostgresRides implements RideStore {
     });
   }
 
+  private async manage<T extends object>(
+    account: VerifiedAccount,
+    id: string,
+    command: { method: string; path: string; key: string; body: object; status?: number } | null,
+    action: (context: lifecycle.ManagementContext) => Promise<T>,
+  ): Promise<T> {
+    return this.transaction(account, async (client) => {
+      if (command) await this.lockCommand(client, account, command.key);
+      const row = await this.lockRide(client, id, 'UPDATE', notFound, true);
+      // Never take the actor's profile first: two lobbies may contain the same people.
+      const profiles = await client.query<{
+        id: string;
+        account_state: string;
+        deleted_at: Date | null;
+      }>(
+        `SELECT id, account_state, deleted_at FROM ridr.profiles WHERE id = $2 OR id IN
+          (SELECT user_id FROM ridr.memberships WHERE ride_id = $1 AND left_at IS NULL)
+         ORDER BY id FOR UPDATE`,
+        [id, account.id],
+      );
+      const actor = profiles.rows.find((profile) => profile.id === account.id);
+      if (actor && (actor.account_state !== 'active' || actor.deleted_at !== null))
+        throw new ApiError(403, 'ACCOUNT_UNAVAILABLE', 'This account is unavailable.');
+      const members = await client.query<MemberRow>(
+        `SELECT m.*, p.display_name FROM ridr.memberships m JOIN ridr.profiles p ON p.id = m.user_id
+         WHERE m.ride_id = $1 AND (m.left_at IS NULL OR m.user_id = $2)
+         ORDER BY m.id FOR UPDATE OF m`,
+        [id, account.id],
+      );
+      const own =
+        members.rows
+          .filter((member) => member.user_id === account.id)
+          .sort((a, b) => b.joined_at.getTime() - a.joined_at.getTime() || b.id.localeCompare(a.id))
+          .find((member) => !member.left_at) ??
+        members.rows
+          .filter((member) => member.user_id === account.id)
+          .sort(
+            (a, b) => b.joined_at.getTime() - a.joined_at.getTime() || b.id.localeCompare(a.id),
+          )[0];
+      if (!actor || !own) throw notFound();
+      const privacy = command && /\/(end|leave|sharing)$/.test(command.path);
+      if (command && !privacy && (row.state === 'ended' || own.left_at)) throw notFound();
+      const operation = command ? `${command.method} ${command.path}` : '';
+      const digest = command
+        ? requestHash(command.method, command.path, command.body)
+        : Buffer.alloc(0);
+      if (command) {
+        const replay = await this.receipt<T>(client, account, command.key, operation, digest);
+        if (replay) return replay;
+      }
+      const result = await action({ client, ride: row, members: members.rows, own });
+      if (command)
+        await this.saveReceipt(
+          client,
+          account,
+          command.key,
+          operation,
+          digest,
+          command.status ?? 200,
+          result,
+        );
+      return result;
+    });
+  }
+
+  start(account: VerifiedAccount, id: string, change: StartRide): Promise<Ride> {
+    const { idempotencyKey, revision, ...body } = change;
+    return this.manage(
+      account,
+      id,
+      {
+        method: 'POST',
+        path: `/v1/rides/${id}/start`,
+        key: idempotencyKey,
+        body: { ...body, revision },
+      },
+      (context) => lifecycle.startRide(context, change),
+    );
+  }
+  end(account: VerifiedAccount, id: string, change: EndRide): Promise<Ride> {
+    const { idempotencyKey, ...body } = change;
+    return this.manage(
+      account,
+      id,
+      { method: 'POST', path: `/v1/rides/${id}/end`, key: idempotencyKey, body },
+      (context) => lifecycle.endRide(context, change),
+    );
+  }
+  leave(account: VerifiedAccount, id: string, change: StopSharing): Promise<LeftRide> {
+    const { idempotencyKey, ...body } = change;
+    return this.manage(
+      account,
+      id,
+      { method: 'POST', path: `/v1/rides/${id}/leave`, key: idempotencyKey, body },
+      (context) => lifecycle.leaveRide(context, change),
+    );
+  }
+  stopSharing(account: VerifiedAccount, id: string, change: StopSharing): Promise<SharingState> {
+    const { idempotencyKey, ...body } = change;
+    return this.manage(
+      account,
+      id,
+      {
+        method: 'PUT',
+        path: `/v1/rides/${id}/sharing`,
+        key: idempotencyKey,
+        body: { enabled: false, ...body },
+      },
+      (context) => lifecycle.stopSharing(context, change),
+    );
+  }
+  management(account: VerifiedAccount, id: string): Promise<RideManagement> {
+    return this.manage(account, id, null, lifecycle.management);
+  }
+  propose(
+    account: VerifiedAccount,
+    id: string,
+    kind: ProposalKind,
+    change: ProposeChange,
+  ): Promise<ProposedChange> {
+    const { idempotencyKey, revision, ...body } = change;
+    const resource = kind === 'leadership' ? 'leadership-proposals' : 'role-proposals';
+    return this.manage(
+      account,
+      id,
+      {
+        method: 'POST',
+        path: `/v1/rides/${id}/${resource}`,
+        key: idempotencyKey,
+        body: { ...body, revision },
+        status: 201,
+      },
+      (context) => lifecycle.propose(context, kind, change),
+    );
+  }
+  accept(
+    account: VerifiedAccount,
+    id: string,
+    proposalId: string,
+    kind: ProposalKind,
+    change: AcceptChange,
+  ): Promise<Ride | Membership> {
+    const { idempotencyKey, ...body } = change;
+    const resource = kind === 'leadership' ? 'leadership-proposals' : 'role-proposals';
+    return this.manage(
+      account,
+      id,
+      {
+        method: 'POST',
+        path: `/v1/rides/${id}/${resource}/${proposalId}/accept`,
+        key: idempotencyKey,
+        body,
+      },
+      (context) => lifecycle.accept(context, proposalId, kind, change),
+    );
+  }
+  async cancel(
+    account: VerifiedAccount,
+    id: string,
+    proposalId: string,
+    kind: ProposalKind,
+    change: Command,
+  ): Promise<void> {
+    const resource = kind === 'leadership' ? 'leadership-proposals' : 'role-proposals';
+    await this.manage(
+      account,
+      id,
+      {
+        method: 'DELETE',
+        path: `/v1/rides/${id}/${resource}/${proposalId}`,
+        key: change.idempotencyKey,
+        body: {},
+        status: 204,
+      },
+      async (context) => {
+        await lifecycle.cancel(context, proposalId, kind);
+        return {};
+      },
+    );
+  }
+
   private async lockCommand(
     client: PoolClient,
     account: VerifiedAccount,
@@ -526,13 +669,14 @@ export class PostgresRides implements RideStore {
     rideId: string,
     lock: 'UPDATE' | 'SHARE' = 'UPDATE',
     missing = notFound,
+    allowEnded = false,
   ): Promise<RideRow> {
     const result = await client.query<RideRow>(
       `SELECT ${rideColumns} FROM ridr.rides WHERE id = $1 FOR ${lock}`,
       [rideId],
     );
     const row = result.rows[0];
-    if (!row || row.state === 'ended') throw missing();
+    if (!row || (!allowEnded && row.state === 'ended')) throw missing();
     return row;
   }
 

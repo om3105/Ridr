@@ -428,7 +428,7 @@ test('PostgreSQL ride transactions enforce invitation, membership and concurrent
       assert.equal((await rides.list(guest, { limit: 50 })).items.length, 2);
       await assert.rejects(
         rides.rotate(firstLeader, first.ride.id, { revision: 1, idempotencyKey: randomUUID() }),
-        rejectsCode('STATE_CONFLICT', 409),
+        rejectsCode('MOTION_RESTRICTED', 409),
       );
     },
   );
