@@ -4,7 +4,7 @@ Ridr is an iOS and Android app in development for group ride coordination: share
 
 ## Current milestone
 
-Days 1–3 establish the requirements, wireframes and architecture. Day 4 adds the Expo app, NestJS backend, private PostgreSQL/PostGIS database and local routing services. Day 5 implements verified email accounts, secure session restoration, editable profiles, a native map and explicit location permission checks. [Day 6](docs/day-06/README.md) adds ride creation, invitation preview/join by code, link or QR, current rides, Lobby members and leader invitation controls. Physical-device and simulator checks were skipped by the owner. Hosted account setup remains deferred in the [Day 5 handoff](docs/day-05/README.md); local Auth supports continued development. Ride start/end and role changes remain Day 7.
+Days 1–3 establish the requirements, wireframes and architecture. Day 4 adds the Expo app, NestJS backend, private PostgreSQL/PostGIS database and local routing services. Day 5 implements verified email accounts, secure session restoration, editable profiles, a native map and explicit location permission checks. [Day 6](docs/day-06/README.md) adds ride creation, invitation preview/join by code, link or QR, current rides, Lobby members and leader invitation controls. [Day 7](docs/day-07/README.md) adds start/end, leave, independent stop sharing, accepted role/leadership changes and brief stationary checks. Physical-device and simulator checks were skipped by the owner. Hosted account setup remains deferred in the [Day 5 handoff](docs/day-05/README.md); local Auth supports continued development.
 
 The plan targets a 35-working-day beta, assuming two developers and part-time design/QA support. Subscription checkout is deferred to v1.1. Automatic crash detection is conditional on device and field validation and is not a promised production safety capability.
 
@@ -23,6 +23,7 @@ The plan targets a 35-working-day beta, assuming two developers and part-time de
 - [Day 4 setup, verification and device checklist](docs/day-04/README.md)
 - [Day 5 accounts, native checks and remaining prerequisites](docs/day-05/README.md)
 - [Day 6 ride creation and joining](docs/day-06/README.md)
+- [Day 7 lifecycle, role permissions and verification](docs/day-07/README.md)
 
 These documents cover all 34 source functional requirements, 15 supporting items, and 25 planned acceptance scenarios. Planned checks are not represented as completed app tests.
 
@@ -48,7 +49,7 @@ In another terminal, run `npm run dev:web` for the preview or `npm run dev:mobil
 
 Follow [AGENTS.md](AGENTS.md). Implement one logical milestone at a time, verify the actual change, inspect staged content, and create a specific truthful commit. Use real timestamps and preserve actual authorship. Do not manufacture work or history.
 
-Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`. With the dedicated test database running and migrated, run `NODE_ENV=test npm run test:database`, `NODE_ENV=test npm run test:profiles --workspace @ridr/api` and `NODE_ENV=test npm run test:rides --workspace @ridr/api`. After local Auth setup, run `NODE_ENV=test npm run test:auth` for actual email verification, password recovery and session revocation. The build compiles the API and exports mobile/web bundles; native compilation is separate. The Day 2 and Day 3 standalone design/contract checks remain available in their handoffs. See the [Day 6 verification record](docs/day-06/README.md#verification-record) for current results and limitations.
+Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`. With the dedicated test database running and migrated, run `NODE_ENV=test npm run test:database`, `NODE_ENV=test npm run test:profiles --workspace @ridr/api`, `NODE_ENV=test npm run test:rides --workspace @ridr/api` and `NODE_ENV=test npm run test:management --workspace @ridr/api`. After local Auth setup, run `NODE_ENV=test npm run test:auth` for actual email verification, password recovery and session revocation. The build compiles the API and exports mobile/web bundles; native compilation is separate. The Day 2 and Day 3 standalone design/contract checks remain available in their handoffs. See the [Day 7 verification record](docs/day-07/README.md#verification) for current results and limitations.
 
 ## Local artifacts
 

@@ -40,6 +40,7 @@ jobs:
         run: |
           npm run test:profiles --workspace @ridr/api
           npm run test:rides --workspace @ridr/api
+          npm run test:management --workspace @ridr/api
           npm run auth:setup
           npm run auth:roles
           npm run auth:up

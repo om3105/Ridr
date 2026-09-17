@@ -60,12 +60,25 @@ opaque `rideId` needed for explicit join, without granting membership. These
 additions clarify the original Day 3 response omissions.
 
 `GET /rides?limit=&cursor=` returns only the caller's current Lobby/Active
-memberships as `{items:[{ride,membership}],nextCursor}`. Day 6 invitation replacement
-accepts exactly `{rotate:true}` and requires the ride revision; it returns the same
-invitation shape as creation. Active-ride replacement returns `409 STATE_CONFLICT`
-until the later motion guard is implemented. The Active request shape below stays
-the future contract. Raw invitation credentials are omitted on receipt replay;
+memberships as `{items:[{ride,membership}],nextCursor}`. Lobby invitation replacement
+accepts `{rotate:true}` and requires the ride revision; it returns the same
+invitation shape as creation. Day 7 adds Active replacement with the stationary
+motion context shown below. Raw invitation credentials are omitted on receipt replay;
 receiving a link, QR or preview never joins a ride or enables location sharing.
+
+Day 7 adds the lifecycle and proposal operations below, plus
+`GET /rides/{rideId}/management` returning `{ride,membership,proposals}`. It returns
+only the caller's latest membership and pending proposals involving that member.
+Each proposal is `{id,kind,requesterMemberId,targetMemberId,physicalRole,expiresAt}`;
+`kind` is `role_change` or `leadership`, with `physicalRole:null` for leadership.
+Former participants may read this minimal response to reconcile an end/leave,
+with no proposals or other members' data; outsiders cannot. The live snapshot
+still requires current membership in a Lobby/Active ride.
+
+Day 7 implements only the stop (`enabled:false`) branch of sharing. Explicit
+opt-in, location delivery and durable offline command queues remain later work.
+The app refreshes management while its ride screen is in the foreground; Day 7
+records transactional events but does not yet deliver live ride socket events.
 
 | Method/path | Request → response | Authorization, concurrency and failure rules |
 |---|---|---|

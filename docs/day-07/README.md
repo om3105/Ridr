@@ -1,8 +1,9 @@
 # Day 7 ride lifecycle and role permissions
 
-Status: implementation in progress. This plan was prepared before implementation
-and authorized by the owner. Day 6 is the baseline; existing icon edits are
-unrelated and remain outside this milestone.
+Status: complete for the authorized Day 7 scope, with the device/simulator checks
+skipped by the owner and later features preserved below. The plan was prepared
+before implementation. Day 6 is the baseline; existing icon edits are unrelated
+and remain outside this milestone.
 
 ## Implementation plan
 
@@ -44,4 +45,84 @@ simulator checks remain skipped by owner instruction.
 
 ## Verification
 
-Results will be recorded here after the checks run.
+Verification on September 16–17, 2026:
+
+- Mobile: 56 tests passed, covering request validation, same-command retries,
+  session boundaries, motion hysteresis and privacy-state reconciliation.
+- API: 20 unit/HTTP tests passed, including all Day 7 routes and strict request
+  parsing. The API build passed.
+- Real PostgreSQL lifecycle suite: 12 scenarios plus the parent test passed
+  (13 tests), covering atomic start/end, permissions, proposal expiry/cancellation,
+  pair readiness and cleanup, contrary motion telemetry, consent epochs, competing
+  starts, start/join capacity races, transfer/end races and revoked-session rollback.
+- Existing ride integration suite: 8 scenarios plus the parent test passed
+  (9 tests). Active invitation replacement now expects a motion restriction when
+  context is absent, replacing Day 6's temporary state restriction.
+- Workspace lint and type checks passed. iOS, Android and web bundle exports
+  passed; these exports are not native device execution.
+- Existing Day 3 reference-schema checks passed all 24 integrity cases; event and
+  public-response examples, schema references and document-link checks passed.
+
+Run the database suites with the local database started and migrated:
+
+```sh
+NODE_ENV=test npm run test:management --workspace @ridr/api
+NODE_ENV=test npm run test:rides --workspace @ridr/api
+```
+
+The lifecycle suite is included in CI. Its fixtures use random identities and
+remove only their own records. The initial database run required starting Docker.
+A stop-time assertion was corrected to use the database clock so host/VM clock
+skew does not mistakenly test the server's future-time cap. The final results
+above include that correction.
+
+Review fixed immediate local stopping during another request and pending-state
+reconciliation after a lost or delayed response. Sensor behavior, native layout,
+physical devices and simulator flows remain unverified under the owner's waiver.
+
+## App behavior
+
+Open a ride from **Your rides**. The leader can start a Lobby ride or cancel/end
+the ride for everyone. Other members can leave. Everyone can stop their own
+sharing without leaving, surrendering their role or breaking a pair. Start never
+enables sharing; explicit location opt-in belongs to a later milestone.
+
+**Check that I'm stopped** starts a bounded foreground speed observation after
+location permission. Ten consecutive seconds below 3 km/h establish stopped;
+five seconds above 6 km/h establish moving. Missing, stale or inaccurate readings
+remain unknown. The check discards coordinates, expires shortly, and stops on
+screen exit/backgrounding. Start, role proposals and acceptance require a fresh
+check. Replacing an Active invitation performs its own check. End, leave, stop,
+proposal cancellation and invitation revocation have no motion gate.
+
+The leader can request a member's Rider/Pillion change or offer leadership to a
+Rider. The named member accepts or declines; the proposer may cancel. Requests
+expire after five minutes and become invalid when their ride/member revisions
+change. A new request of the same kind for the same target replaces the previous
+pending request. Sharing consent never transfers with a role.
+
+The open ride screen refreshes management every five seconds while foregrounded.
+It also refreshes on focus and after a command. Ended/departed status removes the
+member list and invitation, stops local diagnostics, and reconciles pending
+privacy actions. These are foreground reads, not a live location/socket system.
+
+Stop, leave and end stop local collection immediately, even if another network
+request is in progress. The screen reports pending confirmation honestly. A retry
+retains the original command identity, consent epoch and capture time. Pending
+privacy requests survive navigation in account-scoped memory, but not application
+termination or account locking. Durable offline queues remain assigned to
+Days 9–15 and 27; background global end delivery is not claimed here.
+
+## API and data boundaries
+
+The existing Day 3 tables support this milestone; no new migration or dependency
+is needed. The [API contract](../day-03/api-contracts.md#ride-and-membership-operations)
+records the management response and implemented sharing subset. Mutations
+serialize the ride and participant records and recheck the account before commit.
+Accepted end/leave/stop retries can reconcile after live access closes; start and
+proposal retries still require current membership in a live ride.
+
+Pairing/readiness fixtures verify the start guard and cleanup rules without
+introducing pairing screens. Internal transactional events record lifecycle
+changes for later delivery. No summary worker, push delivery or production
+deployment is included.
