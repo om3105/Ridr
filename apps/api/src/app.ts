@@ -1,3 +1,5 @@
+import { osrmRouter } from './route-planning.js';
+import { RouteController } from './routes.js';
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Module } from '@nestjs/common';
@@ -74,7 +76,12 @@ export async function createApp(
   const rideStore =
     options.rides ??
     (accounts && config.auth
-      ? new PostgresRides(config.databaseUrl, accounts.verifier, logger)
+      ? new PostgresRides(
+          config.databaseUrl,
+          accounts.verifier,
+          logger,
+          osrmRouter(config.routing ?? {}),
+        )
       : null);
   const rides: RideServices | null =
     accounts && rideStore
@@ -87,7 +94,7 @@ export async function createApp(
   const app = await NestFactory.create(
     {
       module: AppModule,
-      controllers: [HealthController, AccountController, RideController],
+      controllers: [HealthController, AccountController, RideController, RouteController],
       providers: [
         { provide: DATABASE_HEALTH, useValue: database },
         DatabaseLifecycle,

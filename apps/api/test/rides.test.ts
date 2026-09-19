@@ -146,6 +146,17 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
   let revoked = false;
   const logs: string[] = [];
   const store: RideStore = {
+    route: async () => null,
+    saveRoute: async (actor, id, change) => {
+      assert.equal(actor.id, account.id);
+      return {
+        id,
+        source: change.source,
+        profile: 'driving',
+        points: change.points,
+        revision: change.revision + 1,
+      };
+    },
     create: async (actor, change) => {
       assert.equal(actor.id, account.id);
       calls += 1;
@@ -259,6 +270,85 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
   };
   const post = (path: string, body: unknown) =>
     fetch(url + '/v1' + path, { method: 'POST', headers, body: JSON.stringify(body) });
+  await t.test('route HTTP validates multipart uploads and revision headers', async () => {
+    const routeUrl = `${url}/v1/rides/${ride.id}/route`;
+    assert.equal((await fetch(routeUrl)).status, 401);
+    const routeHeaders = {
+      Authorization: headers.Authorization,
+      'Idempotency-Key': randomUUID(),
+      'If-None-Match': '*',
+    };
+    const capturedAt = new Date().toISOString();
+    const motion = { state: 'stopped', source: 'speed', observedAt: capturedAt };
+    const makeFile = (text: string, name = 'ride.gpx') => {
+      const body = new FormData();
+      body.append('file', new Blob([text]), name);
+      body.append('motion', JSON.stringify(motion));
+      body.append('capturedAt', capturedAt);
+      return body;
+    };
+    const xml = '<gpx><rte><rtept lat="18" lon="73"/><rtept lat="19" lon="74"/></rte></gpx>';
+    const imported = await fetch(routeUrl + '/import', {
+      method: 'POST',
+      headers: routeHeaders,
+      body: makeFile(xml),
+    });
+    assert.equal(imported.status, 200);
+    assert.equal(imported.headers.get('etag'), '"1"');
+    assert.equal((await imported.json()).data.source, 'gpx');
+    for (const [text, name, status] of [
+      [xml, 'ride.txt', 415],
+      ['<gpx>', 'ride.gpx', 422],
+      ['x'.repeat(5 * 1024 * 1024 + 1), 'ride.gpx', 413],
+    ] as const) {
+      assert.equal(
+        (
+          await fetch(routeUrl + '/import', {
+            method: 'POST',
+            headers: routeHeaders,
+            body: makeFile(text, name),
+          })
+        ).status,
+        status,
+      );
+    }
+    const draw = JSON.stringify({
+      points: [
+        { lat: 18, lon: 73 },
+        { lat: 19, lon: 74 },
+      ],
+      motion,
+      capturedAt,
+    });
+    assert.equal(
+      (
+        await fetch(routeUrl, {
+          method: 'PUT',
+          headers: { ...routeHeaders, 'Content-Type': 'application/json' },
+          body: draw,
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await fetch(routeUrl, {
+          method: 'PUT',
+          headers: {
+            Authorization: headers.Authorization,
+            'Idempotency-Key': randomUUID(),
+            'Content-Type': 'application/json',
+          },
+          body: draw,
+        })
+      ).status,
+      428,
+    );
+    assert.equal(
+      (await fetch(routeUrl, { headers: { Authorization: headers.Authorization } })).status,
+      200,
+    );
+  });
   assert.equal((await fetch(url + '/v1/rides')).status, 401);
   assert.equal(calls, 0);
   const created = await post('/rides', { name: 'Morning ride', transport: 'motorcycle' });

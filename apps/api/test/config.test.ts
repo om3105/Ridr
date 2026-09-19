@@ -11,6 +11,7 @@ test('configuration uses bounded local defaults', () => {
     port: 3000,
     databaseUrl: valid.DATABASE_URL,
     corsOrigins: [],
+    routing: {},
     rideLimits: { accountPerMinute: 30, ipPerMinute: 120 },
   });
 });

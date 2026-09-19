@@ -244,6 +244,7 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
         [rideIds],
       );
       await client.query('DELETE FROM ridr.devices WHERE user_id=ANY($1::uuid[])', [actorIds]);
+      await client.query('DELETE FROM ridr.routes WHERE ride_id=ANY($1::uuid[])', [rideIds]);
       await client.query('DELETE FROM ridr.memberships WHERE ride_id=ANY($1::uuid[])', [rideIds]);
       await client.query('DELETE FROM ridr.rides WHERE id=ANY($1::uuid[])', [rideIds]);
       await client.query('DELETE FROM ridr.profiles WHERE id=ANY($1::uuid[])', [actorIds]);
@@ -997,6 +998,109 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
         await count('SELECT count(*) FROM ridr.outbox_events WHERE ride_id=$1', [created.ride.id]),
         0,
       );
+    },
+  );
+  await t.test(
+    'route saves enforce ownership, revisions, stopped state and preserve saved geometry',
+    async () => {
+      const leader = account(),
+        member = account(),
+        outsider = account();
+      const created = await create(leader);
+      const id = created.ride.id;
+      await join(member, created);
+      const points = [
+        { lat: 18, lon: 73 },
+        { lat: 19, lon: 74 },
+      ];
+      const change = { ...command(), ...motion(), source: 'gpx' as const, points, revision: 0 };
+      assert.equal(await rides.route(member, id), null);
+      const saved = await rides.saveRoute(leader, id, change);
+      assert.equal(saved.revision, 1);
+      assert.deepEqual(await rides.route(member, id), saved);
+      assert.deepEqual(await rides.saveRoute(leader, id, change), saved);
+      await assert.rejects(rides.route(outsider, id), rejectsCode('NOT_FOUND'));
+      await assert.rejects(
+        rides.saveRoute(member, id, { ...change, ...command(), revision: 1 }),
+        rejectsCode('FORBIDDEN'),
+      );
+      await assert.rejects(
+        rides.saveRoute(leader, id, { ...change, ...command() }),
+        rejectsCode('REVISION_CONFLICT'),
+      );
+      await assert.rejects(
+        rides.saveRoute(leader, id, {
+          ...change,
+          ...command(),
+          revision: 1,
+          motion: { ...change.motion, state: 'moving' },
+        }),
+        rejectsCode('MOTION_RESTRICTED'),
+      );
+      await assert.rejects(
+        rides.saveRoute(leader, id, { ...change, ...command(), revision: 1, source: 'drawn' }),
+        rejectsCode('ROUTING_UNAVAILABLE'),
+      );
+      assert.deepEqual(await rides.route(member, id), saved);
+      const concurrent = await Promise.allSettled(
+        [1, 2].map(() =>
+          rides.saveRoute(leader, id, { ...change, ...command(), ...motion(), revision: 1 }),
+        ),
+      );
+      assert.equal(concurrent.filter((r) => r.status === 'fulfilled').length, 1);
+      await rides.start(leader, id, await startChange(leader, id));
+      await assert.rejects(
+        rides.saveRoute(leader, id, { ...change, ...command(), ...motion(), revision: 2 }),
+        rejectsCode('RIDE_STATE_CONFLICT'),
+      );
+      assert.equal((await rides.route(member, id))!.revision, 2);
+    },
+  );
+  await t.test(
+    'ride start during a routing request prevents a late save without blocking start',
+    async () => {
+      const leader = account();
+      const created = await create(leader);
+      const id = created.ride.id;
+      let finish!: () => void;
+      let entered!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const pending = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const routed = new PostgresRides(
+        databaseUrl,
+        verifier,
+        new OperationalLogger(() => undefined),
+        async (points) => {
+          entered();
+          await pending;
+          return points;
+        },
+      );
+      try {
+        const saving = routed.saveRoute(leader, id, {
+          ...command(),
+          ...motion(),
+          source: 'drawn',
+          revision: 0,
+          points: [
+            { lat: 18, lon: 73 },
+            { lat: 19, lon: 74 },
+          ],
+        });
+        const rejected = assert.rejects(saving, rejectsCode('RIDE_STATE_CONFLICT'));
+        await started;
+        await rides.start(leader, id, await startChange(leader, id));
+        finish();
+        await rejected;
+        assert.equal(await rides.route(leader, id), null);
+      } finally {
+        finish();
+        await routed.close();
+      }
     },
   );
 });

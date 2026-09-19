@@ -1,3 +1,4 @@
+import type { RouteChange, SavedRoute } from './route-planning.js';
 import type { VerifiedAccount } from './auth.js';
 
 export type Transport = 'motorcycle' | 'cycling' | 'car';
@@ -89,6 +90,8 @@ export interface RotateInvite extends Partial<MotionContext> {
 }
 
 export interface RideStore {
+  route(account: VerifiedAccount, rideId: string): Promise<SavedRoute | null>;
+  saveRoute(account: VerifiedAccount, rideId: string, change: RouteChange): Promise<SavedRoute>;
   create(account: VerifiedAccount, change: CreateRide): Promise<CreatedRide>;
   preview(account: VerifiedAccount, credential: PreviewInvite): Promise<RidePreview>;
   join(account: VerifiedAccount, rideId: string, change: JoinRide): Promise<RideMembership>;

@@ -7,6 +7,7 @@ export interface ApiConfig {
   databaseUrl: string;
   corsOrigins: string[];
   rideLimits: RideLimits;
+  routing?: Partial<Record<'cycling' | 'driving', string>>;
   auth?: AuthConfig;
 }
 
@@ -57,6 +58,26 @@ export function readConfig(env: NodeJS.ProcessEnv): ApiConfig {
       throw new Error(`${name} must be an integer between 1 and 10000.`);
     return Number(raw);
   };
+  const routing: Partial<Record<'cycling' | 'driving', string>> = {};
+  for (const profile of ['cycling', 'driving'] as const) {
+    const value = env[`ROUTING_${profile.toUpperCase()}_URL`];
+    if (!value) continue;
+    try {
+      const url = new URL(value);
+      if (
+        !['http:', 'https:'].includes(url.protocol) ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash ||
+        url.pathname !== '/'
+      )
+        throw new Error();
+      routing[profile] = url.origin;
+    } catch {
+      throw new Error(`ROUTING_${profile.toUpperCase()}_URL must be a plain HTTP(S) origin.`);
+    }
+  }
   const rideLimits = {
     accountPerMinute: limit('INVITE_ACCOUNT_PER_MINUTE', 30),
     ipPerMinute: limit('INVITE_IP_PER_MINUTE', 120),
@@ -122,6 +143,7 @@ export function readConfig(env: NodeJS.ProcessEnv): ApiConfig {
     databaseUrl,
     corsOrigins: [...new Set(corsOrigins)],
     rideLimits,
+    routing,
     ...(auth ? { auth } : {}),
   };
 }

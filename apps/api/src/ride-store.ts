@@ -1,3 +1,11 @@
+import { readRoute, routeGuard, writeRoute } from './route-records.js';
+import {
+  osrmRouter,
+  validatePoints,
+  type Router,
+  type RouteChange,
+  type SavedRoute,
+} from './route-planning.js';
 import * as lifecycle from './ride-management.js';
 import {
   integer,
@@ -98,6 +106,7 @@ export class PostgresRides implements RideStore {
     databaseUrl: string,
     private readonly verifier: TokenVerifier,
     logger: OperationalLogger,
+    private readonly router: Router = osrmRouter({}),
   ) {
     this.pool = new Pool({
       connectionString: databaseUrl,
@@ -109,6 +118,43 @@ export class PostgresRides implements RideStore {
       query_timeout: 3500,
     });
     this.pool.on('error', () => logger.write('ride_pool_error'));
+  }
+
+  async route(account: VerifiedAccount, id: string): Promise<SavedRoute | null> {
+    return (await this.manage(account, id, null, readRoute)).route;
+  }
+  async saveRoute(account: VerifiedAccount, id: string, change: RouteChange): Promise<SavedRoute> {
+    validatePoints(change.points, change.source === 'drawn' ? 25 : 10000);
+    const { idempotencyKey, ...body } = change;
+    const path = `/v1/rides/${id}/route${change.source === 'gpx' ? '/import' : ''}`;
+    const method = change.source === 'gpx' ? 'POST' : 'PUT';
+    const prepared = await this.manage(account, id, null, async (context) => {
+      if (context.own.left_at || context.ride.state === 'ended') throw notFound();
+      if (context.own.id !== context.ride.leader_member_id)
+        throw new ApiError(403, 'FORBIDDEN', 'Only the current leader can edit the route.');
+      const replay = await this.receipt<SavedRoute>(
+        context.client,
+        account,
+        idempotencyKey,
+        `${method} ${path}`,
+        requestHash(method, path, body),
+      );
+      if (replay) return { replay, profile: 'driving' as const };
+      await routeGuard(context, change);
+      return {
+        replay: null,
+        profile: context.ride.transport === 'cycling' ? ('cycling' as const) : ('driving' as const),
+      };
+    });
+    if (prepared.replay) return prepared.replay;
+    // Provider calls never hold ride locks. The final transaction repeats all guards.
+    const points =
+      change.source === 'drawn'
+        ? await this.router(change.points, prepared.profile)
+        : change.points;
+    return this.manage(account, id, { method, path, key: idempotencyKey, body }, (context) =>
+      writeRoute(context, { ...change, points }),
+    );
   }
 
   async create(account: VerifiedAccount, change: CreateRide): Promise<CreatedRide> {
