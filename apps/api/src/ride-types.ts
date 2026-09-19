@@ -1,3 +1,4 @@
+import type { LocationSample, LocationAck, LiveLocations } from './location.js';
 import type { RouteChange, SavedRoute } from './route-planning.js';
 import type { VerifiedAccount } from './auth.js';
 
@@ -90,6 +91,23 @@ export interface RotateInvite extends Partial<MotionContext> {
 }
 
 export interface RideStore {
+  enableSharing(
+    account: VerifiedAccount,
+    rideId: string,
+    change: Command & { revision: number },
+  ): Promise<SharingState>;
+  registerDevice(
+    account: VerifiedAccount,
+    deviceId: string,
+    platform: 'ios' | 'android',
+  ): Promise<void>;
+  sample(
+    account: VerifiedAccount,
+    deviceId: string,
+    sample: LocationSample,
+    historical?: boolean,
+  ): Promise<LocationAck>;
+  locations(account: VerifiedAccount, rideId: string): Promise<LiveLocations>;
   route(account: VerifiedAccount, rideId: string): Promise<SavedRoute | null>;
   saveRoute(account: VerifiedAccount, rideId: string, change: RouteChange): Promise<SavedRoute>;
   create(account: VerifiedAccount, change: CreateRide): Promise<CreatedRide>;

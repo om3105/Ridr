@@ -452,11 +452,18 @@ export class RideController {
   ) {
     const account = await this.actor(request, response);
     json(request.headers['content-type']);
-    const result = await this.services!.store.stopSharing(
-      account,
-      rideId(id),
-      parseStop(body, request.header('idempotency-key'), true),
-    );
+    const enabling = body && typeof body === 'object' && 'enabled' in body && body.enabled === true;
+    if (enabling) exact(object(body), ['enabled']);
+    const result = enabling
+      ? await this.services!.store.enableSharing(account, rideId(id), {
+          revision: rideRevision(request.header('if-match')),
+          idempotencyKey: commandKey(request.header('idempotency-key')),
+        })
+      : await this.services!.store.stopSharing(
+          account,
+          rideId(id),
+          parseStop(body, request.header('idempotency-key'), true),
+        );
     return envelope(result, response, result.revision);
   }
 

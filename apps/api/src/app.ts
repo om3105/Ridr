@@ -1,3 +1,4 @@
+import { LocationController, LocationGateway } from './location-transport.js';
 import { osrmRouter } from './route-planning.js';
 import { RouteController } from './routes.js';
 import 'reflect-metadata';
@@ -94,7 +95,13 @@ export async function createApp(
   const app = await NestFactory.create(
     {
       module: AppModule,
-      controllers: [HealthController, AccountController, RideController, RouteController],
+      controllers: [
+        HealthController,
+        AccountController,
+        RideController,
+        RouteController,
+        LocationController,
+      ],
       providers: [
         { provide: DATABASE_HEALTH, useValue: database },
         DatabaseLifecycle,
@@ -103,6 +110,7 @@ export async function createApp(
         { provide: RIDES, useValue: rides },
         RideLifecycle,
         HealthGateway,
+        LocationGateway,
       ],
     },
     { logger: false },

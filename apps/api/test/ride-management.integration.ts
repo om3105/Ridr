@@ -1,3 +1,4 @@
+import { parseSample } from '../src/location.js';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
@@ -1101,6 +1102,94 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
         finish();
         await routed.close();
       }
+    },
+  );
+  await t.test(
+    'location consent, ownership, retry, ordering, stale history and revocation',
+    async () => {
+      const leader = account(),
+        member = account(),
+        outsider = account();
+      const created = await create(leader),
+        id = created.ride.id;
+      await join(member, created, 'pillion');
+      const device = randomUUID();
+      await rides.registerDevice(member, device, 'android');
+      await assert.rejects(rides.registerDevice(leader, device, 'ios'), rejectsCode('FORBIDDEN'));
+      const enable = async () =>
+        rides.enableSharing(member, id, {
+          ...command(),
+          revision: (await rides.management(member, id)).membership.revision,
+        });
+      await assert.rejects(enable(), rejectsCode('STATE_CONFLICT'));
+      await rides.start(leader, id, await startChange(leader, id));
+      const consent = await enable();
+      const make = (at = new Date().toISOString()) =>
+        parseSample({
+          v: 1,
+          type: 'location.sample',
+          id: randomUUID(),
+          rideId: id,
+          capturedAt: at,
+          payload: {
+            consentEpoch: consent.consentEpoch,
+            position: { lat: 18.52, lon: 73.85, accuracyM: 12, recordedAt: at },
+            speedKph: 18,
+            headingDegrees: 90,
+            batteryPercent: null,
+          },
+        });
+      const first = make();
+      const ack = await rides.sample(member, device, first);
+      assert.equal(ack.status, 'accepted');
+      assert.equal((await rides.sample(member, device, first)).status, 'duplicate');
+      await assert.rejects(
+        rides.sample(member, device, { ...first, payload: { ...first.payload, speedKph: 20 } }),
+        rejectsCode('IDEMPOTENCY_CONFLICT'),
+      );
+      await assert.rejects(rides.sample(member, randomUUID(), make()), rejectsCode('FORBIDDEN'));
+      await assert.rejects(rides.locations(outsider, id), rejectsCode('NOT_FOUND'));
+      const newer = make(new Date(Date.now() + 2).toISOString());
+      await rides.sample(member, device, newer);
+      const older = make(first.capturedAt);
+      await rides.sample(member, device, older);
+      const expected = [first, older, newer]
+        .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt) || a.id.localeCompare(b.id))
+        .at(-1)!;
+      assert.equal((await rides.locations(leader, id)).items[0]!.sampleId, expected.id);
+      await assert.rejects(
+        rides.sample(member, device, make(new Date(Date.now() + 10000).toISOString())),
+        rejectsCode('CLOCK_SKEW'),
+      );
+      const queued = make();
+      // Ensure the privacy cutoff is strictly later than this historical sample.
+      await pool.query('SELECT pg_sleep(0.01)');
+      await rides.stopSharing(member, id, stop(consent.consentEpoch));
+      assert.equal((await rides.locations(leader, id)).items.length, 0);
+      await assert.rejects(rides.sample(member, device, queued), rejectsCode('SHARING_DISABLED'));
+      await rides.sample(member, device, queued, true);
+      assert.equal((await rides.locations(leader, id)).items.length, 0);
+      await assert.rejects(
+        rides.sample(member, device, make(new Date(Date.now() + 1).toISOString()), true),
+        rejectsCode('CONSENT_EPOCH_STALE'),
+      );
+      const next = await enable();
+      assert.ok(next.consentEpoch > consent.consentEpoch);
+      await assert.rejects(
+        rides.sample(member, device, make()),
+        rejectsCode('CONSENT_EPOCH_STALE'),
+      );
+      revoked.add(member.sessionId);
+      await assert.rejects(rides.locations(member, id), rejectsCode('UNAUTHENTICATED'));
+      revoked.delete(member.sessionId);
+      await rides.end(leader, id, {
+        ...command(),
+        reason: 'completed',
+        capturedAt: new Date().toISOString(),
+        consentEpoch: 0,
+      });
+      await assert.rejects(rides.locations(member, id), rejectsCode('NOT_FOUND'));
+      await assert.rejects(enable(), rejectsCode('NOT_FOUND'));
     },
   );
 });

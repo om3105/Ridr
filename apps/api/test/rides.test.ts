@@ -1,3 +1,4 @@
+import { io } from 'socket.io-client';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
@@ -146,6 +147,14 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
   let revoked = false;
   const logs: string[] = [];
   const store: RideStore = {
+    enableSharing: async () => {
+      throw new Error('Unused');
+    },
+    registerDevice: async () => undefined,
+    sample: async () => {
+      throw new Error('Unused');
+    },
+    locations: async () => ({ serverTime: new Date().toISOString(), sequence: 0, items: [] }),
     route: async () => null,
     saveRoute: async (actor, id, change) => {
       assert.equal(actor.id, account.id);
@@ -270,6 +279,48 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
   };
   const post = (path: string, body: unknown) =>
     fetch(url + '/v1' + path, { method: 'POST', headers, body: JSON.stringify(body) });
+  await t.test(
+    'live sockets authenticate, deliver snapshots and disconnect revoked sessions',
+    async () => {
+      const socket = io(`${url}/v1/rides`, {
+        transports: ['websocket'],
+        auth: { token: 'private-test-token' },
+        reconnection: false,
+      });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          socket.once('connect', resolve);
+          socket.once('connect_error', reject);
+        });
+        const subscribed = await socket
+          .timeout(2000)
+          .emitWithAck('subscribe', { rideId: ride.id, afterSequence: 0 });
+        assert.deepEqual(subscribed.data.items, []);
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('No live snapshot')), 3000);
+          socket.once('location.snapshot', () => {
+            clearTimeout(timeout);
+            resolve();
+          });
+        });
+        revoked = true;
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(
+            () => reject(new Error('Revoked socket remained connected')),
+            3000,
+          );
+          socket.once('disconnect', () => {
+            clearTimeout(timeout);
+            resolve();
+          });
+        });
+        assert.equal(socket.connected, false);
+      } finally {
+        socket.disconnect();
+        revoked = false;
+      }
+    },
+  );
   await t.test('route HTTP validates multipart uploads and revision headers', async () => {
     const routeUrl = `${url}/v1/rides/${ride.id}/route`;
     assert.equal((await fetch(routeUrl)).status, 401);

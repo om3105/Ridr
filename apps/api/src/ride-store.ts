@@ -1,3 +1,11 @@
+import {
+  enableSharing,
+  writeSample,
+  liveLocations,
+  type LocationSample,
+  type LocationAck,
+  type LiveLocations,
+} from './location.js';
 import { readRoute, routeGuard, writeRoute } from './route-records.js';
 import {
   osrmRouter,
@@ -118,6 +126,65 @@ export class PostgresRides implements RideStore {
       query_timeout: 3500,
     });
     this.pool.on('error', () => logger.write('ride_pool_error'));
+  }
+
+  async registerDevice(
+    account: VerifiedAccount,
+    deviceId: string,
+    platform: 'ios' | 'android',
+  ): Promise<void> {
+    await this.transaction(account, async (client) => {
+      await this.lockAccount(client, account);
+      const result = await client.query(
+        `INSERT INTO ridr.devices (id,user_id,platform) VALUES ($1,$2,$3)
+        ON CONFLICT (id) DO UPDATE SET platform=EXCLUDED.platform WHERE devices.user_id=EXCLUDED.user_id AND devices.revoked_at IS NULL RETURNING id`,
+        [deviceId, account.id, platform],
+      );
+      if (!result.rowCount) throw new ApiError(403, 'FORBIDDEN', 'Device unavailable.');
+    });
+  }
+  enableSharing(
+    account: VerifiedAccount,
+    id: string,
+    change: Command & { revision: number },
+  ): Promise<SharingState> {
+    return this.manage(
+      account,
+      id,
+      {
+        method: 'PUT',
+        path: `/v1/rides/${id}/sharing`,
+        key: change.idempotencyKey,
+        body: { enabled: true, revision: change.revision },
+      },
+      (context) => enableSharing(context, change.revision),
+    );
+  }
+  locations(account: VerifiedAccount, id: string): Promise<LiveLocations> {
+    return this.manage(account, id, null, liveLocations);
+  }
+  sample(
+    account: VerifiedAccount,
+    deviceId: string,
+    sample: LocationSample,
+    historical = false,
+  ): Promise<LocationAck> {
+    return this.manage(account, sample.rideId, null, async (context) => {
+      if (!historical && (context.own.left_at || context.ride.state === 'ended')) throw notFound();
+      const operation = 'location.sample';
+      const digest = hash(JSON.stringify({ deviceId, sample }));
+      const replay = await this.receipt<LocationAck>(
+        context.client,
+        account,
+        sample.id,
+        operation,
+        digest,
+      );
+      if (replay) return { ...replay, status: 'duplicate' };
+      const result = await writeSample(context, deviceId, sample, historical);
+      await this.saveReceipt(context.client, account, sample.id, operation, digest, 200, result);
+      return result;
+    });
   }
 
   async route(account: VerifiedAccount, id: string): Promise<SavedRoute | null> {
