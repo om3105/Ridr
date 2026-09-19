@@ -1,0 +1,8 @@
+# Opt-in replacement for the synthetic routing fixture; keeps the same API ports.
+services:
+  routing-driving:
+    command: ['osrm-routed', '--algorithm', 'mld', '/data/pune.osrm']
+    volumes: ['./data/routing/pune/driving:/data:ro']
+  routing-cycling:
+    command: ['osrm-routed', '--algorithm', 'mld', '/data/pune.osrm']
+    volumes: ['./data/routing/pune/cycling:/data:ro']

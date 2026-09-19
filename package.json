@@ -30,7 +30,10 @@
     "test:auth": "node --env-file=.env --env-file=.env.auth scripts/auth-check.mjs",
     "routing:prepare": "node scripts/routing-prepare.mjs",
     "routing:up": "docker compose --profile routing up -d routing-driving routing-cycling",
-    "test:routing": "node scripts/routing-check.mjs"
+    "test:routing": "node scripts/routing-check.mjs",
+    "routing:pune:prepare": "node scripts/routing-pune.mjs",
+    "routing:pune:up": "docker compose -f compose.yaml -f compose.pune.yaml --profile routing up -d routing-driving routing-cycling",
+    "test:routing:pune": "node scripts/routing-pune-check.mjs"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",
