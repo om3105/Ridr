@@ -27,6 +27,7 @@ export default function RootLayout() {
           <Stack.Screen name="rides" options={{ title: 'Your rides' }} />
           <Stack.Screen name="create" options={{ title: 'Create a ride' }} />
           <Stack.Screen name="join" options={{ title: 'Join a ride' }} />
+          <Stack.Screen name="route" options={{ title: 'Ride route' }} />
           <Stack.Screen name="ride" options={{ title: 'Your ride' }} />
         </Stack>
       </RideProvider>

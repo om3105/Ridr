@@ -227,13 +227,40 @@ function checkMutation(rideId: string | undefined, key: string): void {
   if ((rideId !== undefined && !uuid(rideId)) || !uuid(key)) invalidRequest();
 }
 
-async function responseError(response: Response, mutation: boolean): Promise<RideError> {
+async function responseError(
+  response: Response,
+  mutation: boolean,
+  routeRequest = false,
+): Promise<RideError> {
   let code: unknown;
   try {
     code = object(object(await response.json())?.error)?.code;
   } catch {
     /* Status remains authoritative. */
   }
+  if (routeRequest && response.status === 422 && code === 'INVALID_ROUTE')
+    return new RideError(
+      'invalid',
+      'Use one continuous GPX track or route with 2–10,000 valid points. Disconnected segments, malformed XML and invalid coordinates are not supported. Your saved route is unchanged.',
+    );
+  if (routeRequest && response.status === 413)
+    return new RideError(
+      'invalid',
+      'Choose a GPX file no larger than 5 MB. Your saved route is unchanged.',
+    );
+  if (routeRequest && response.status === 415)
+    return new RideError(
+      'invalid',
+      'Choose a .gpx file. Other route file formats are not supported.',
+    );
+  if (routeRequest && response.status === 503 && code === 'ROUTING_UNAVAILABLE')
+    return new RideError(
+      'unavailable',
+      'Road routing could not find a route. Check the service and Pune coverage, move the waypoints nearer roads, or import a GPX. Your saved route is unchanged.',
+      true,
+    );
+  if (response.status === 409 && code === 'MOTION_RESTRICTED')
+    return new RideError('blocked', 'Check that you are stopped again before using this control.');
   if (response.status === 401)
     return new RideError('unauthorized', 'Your session has ended. Sign in again.');
   if (response.status === 403)
@@ -287,12 +314,13 @@ async function responseError(response: Response, mutation: boolean): Promise<Rid
   );
 }
 
-async function request<T>(
+export async function request<T>(
   options: RideClientOptions,
   requestOptions: {
     path: string;
     method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
     body?: unknown;
+    form?: FormData;
     idempotencyKey?: string;
     revision?: number;
     parse: (value: unknown) => T;
@@ -331,14 +359,25 @@ async function request<T>(
           ? { 'Idempotency-Key': requestOptions.idempotencyKey }
           : {}),
         ...(requestOptions.revision !== undefined
-          ? { 'If-Match': `"${requestOptions.revision}"` }
+          ? requestOptions.revision === 0
+            ? { 'If-None-Match': '*' }
+            : { 'If-Match': `"${requestOptions.revision}"` }
           : {}),
       },
-      ...(requestOptions.body !== undefined ? { body: JSON.stringify(requestOptions.body) } : {}),
+      ...(requestOptions.form
+        ? { body: requestOptions.form }
+        : requestOptions.body !== undefined
+          ? { body: JSON.stringify(requestOptions.body) }
+          : {}),
       signal: controller.signal,
       redirect: 'error',
     });
-    if (!response.ok) throw await responseError(response, mutation);
+    if (!response.ok)
+      throw await responseError(
+        response,
+        mutation,
+        /\/route(?:\/import)?$/.test(requestOptions.path),
+      );
     try {
       if (requestOptions.noContent) {
         if (response.status !== 204) invalidResponse();

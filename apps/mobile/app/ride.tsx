@@ -220,6 +220,11 @@ function Lobby({ id }: { id: string }) {
         </>
       )}
       {snapshot && (
+        <Link href={{ pathname: '/route', params: { id } }} style={styles.link}>
+          View or plan the route →
+        </Link>
+      )}
+      {snapshot && (
         <>
           <Text style={styles.detail}>
             {transportNames[snapshot.ride.transport]} ·{' '}
