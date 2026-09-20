@@ -321,6 +321,7 @@ export async function request<T>(
     method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
     body?: unknown;
     form?: FormData;
+    deviceId?: string;
     idempotencyKey?: string;
     revision?: number;
     parse: (value: unknown) => T;
@@ -354,6 +355,7 @@ export async function request<T>(
       headers: {
         Authorization: `Bearer ${options.accessToken}`,
         Accept: 'application/json',
+        ...(requestOptions.deviceId ? { 'X-Device-Id': requestOptions.deviceId } : {}),
         ...(requestOptions.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(requestOptions.idempotencyKey
           ? { 'Idempotency-Key': requestOptions.idempotencyKey }
