@@ -1,3 +1,4 @@
+import { bindTracking, stopTracking } from '../location/tracker';
 import {
   createContext,
   useCallback,
@@ -30,6 +31,31 @@ const RideContext = createContext<RideContextValue | null>(null);
 export function RideProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const owner = auth.state === 'ready' ? auth.profile?.id : null;
+  useEffect(() => {
+    if (auth.state === 'ready' && auth.session && auth.profile) {
+      const userId = auth.profile.id;
+      void bindTracking(
+        {
+          apiUrl,
+          accessToken: auth.session.access_token,
+          userId,
+        },
+        async () => {
+          const result = await auth.client?.getSession();
+          if (result?.error)
+            throw new RideError(
+              [400, 401, 403].includes(result.error.status ?? 0) ? 'unauthorized' : 'unavailable',
+              'Session refresh is unavailable.',
+              ![400, 401, 403].includes(result.error.status ?? 0),
+            );
+          const session = result?.data.session;
+          if (!session || session.user.id !== userId)
+            throw new RideError('unauthorized', 'Your session changed.');
+          return { apiUrl, accessToken: session.access_token, userId };
+        },
+      ).catch(() => undefined);
+    } else void stopTracking().catch(() => undefined);
+  }, [auth.state, auth.session, auth.profile, auth.client]);
   // Reset screens as well as cached data when the account becomes locked or changes.
   return <AccountRideProvider key={owner ?? 'locked'}>{children}</AccountRideProvider>;
 }

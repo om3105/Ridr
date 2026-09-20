@@ -82,12 +82,8 @@ export class LocationQueue {
       this.state.consent = { ...consent, epoch: enabled.consentEpoch, since: enabled.effectiveAt };
       if (generation !== this.generation) {
         await this.stop();
-        if (this.state.pendingStop) {
-          this.state.pendingStop.stoppedAt = new Date(
-            Math.max(Date.parse(this.state.pendingStop.stoppedAt), Date.parse(enabled.effectiveAt)),
-          ).toISOString();
-          await this.persist();
-        }
+        this.reconcileStopTime(enabled.effectiveAt);
+        await this.persist();
         return;
       }
       await this.persist();
@@ -105,6 +101,13 @@ export class LocationQueue {
     } finally {
       this.starting = false;
     }
+  }
+  private reconcileStopTime(effectiveAt: string) {
+    const pending = this.state.pendingStop;
+    if (pending)
+      pending.stoppedAt = new Date(
+        Math.max(Date.parse(pending.stoppedAt), Date.parse(effectiveAt)),
+      ).toISOString();
   }
   stop(): Promise<void> {
     this.collecting = false;
@@ -230,13 +233,7 @@ export class LocationQueue {
           this.state.enableIntent = null;
           // The enable was uncertain: reconcile it only to stop, never resume capture.
           await this.stop();
-          if (this.state.pendingStop)
-            this.state.pendingStop.stoppedAt = new Date(
-              Math.max(
-                Date.parse(this.state.pendingStop.stoppedAt),
-                Date.parse(enabled.effectiveAt),
-              ),
-            ).toISOString();
+          this.reconcileStopTime(enabled.effectiveAt);
           await this.persist();
         } catch (error) {
           if (!this.deps.permanent(error)) throw error;

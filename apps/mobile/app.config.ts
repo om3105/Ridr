@@ -39,9 +39,9 @@ const config: ExpoConfig = {
       'expo-location',
       {
         locationWhenInUsePermission:
-          'Allow Ridr to use your location only when you choose a location check.',
+          'Allow Ridr to use your location when you choose to share an active ride or run a device check.',
         locationAlwaysAndWhenInUsePermission:
-          'Allow Ridr to test location briefly in the background. You can stop and clear the test at any time.',
+          'Allow Ridr to keep sharing your active ride when the screen is locked. You can stop sharing at any time.',
         isIosBackgroundLocationEnabled: true,
         isAndroidBackgroundLocationEnabled: true,
         isAndroidForegroundServiceEnabled: true,

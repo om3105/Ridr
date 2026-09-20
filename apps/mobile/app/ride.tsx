@@ -1,3 +1,4 @@
+import { stopTracking } from '../src/location/tracker';
 import Constants from 'expo-constants';
 import { randomUUID } from 'expo-crypto';
 import { Link, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -66,7 +67,7 @@ function Lobby({ id }: { id: string }) {
         if (stoppedFor.current !== id) {
           stoppedFor.current = id;
           stopMotionCheck();
-          void stopAndClearDiagnostics().catch(() => {
+          void Promise.all([stopTracking(), stopAndClearDiagnostics()]).catch(() => {
             if (current())
               setMessage(
                 'This ride has ended or you have left. Turn off Ridr location access in Settings if local cleanup failed.',
@@ -218,6 +219,11 @@ function Lobby({ id }: { id: string }) {
             }}
           />
         </>
+      )}
+      {snapshot?.ride.state === 'active' && (
+        <Link href={{ pathname: '/sharing', params: { id } }} style={styles.link}>
+          Location sharing & live status →
+        </Link>
       )}
       {snapshot && (
         <Link href={{ pathname: '/route', params: { id } }} style={styles.link}>

@@ -58,6 +58,7 @@ export interface LocationSnapshot {
 }
 export interface TrackingStatus {
   sharing: boolean;
+  background?: boolean;
   queued: number;
   lastCapturedAt: string | null;
   lastAckAt: string | null;

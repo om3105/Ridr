@@ -1,3 +1,4 @@
+import { stopTracking } from '../location/tracker';
 import { randomUUID } from 'expo-crypto';
 import { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
@@ -72,7 +73,7 @@ export function RideControls({
   function stopLocalActivity() {
     const current = capture();
     motion.reset();
-    void stopAndClearDiagnostics().catch(() => {
+    void Promise.all([stopTracking(), stopAndClearDiagnostics()]).catch(() => {
       if (current())
         setCleanupWarning(
           'Local location cleanup needs attention. Turn off Ridr location access in Settings.',

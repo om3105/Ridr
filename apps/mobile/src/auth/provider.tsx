@@ -1,3 +1,4 @@
+import { clearTracking, prepareTrackingSignOut } from '../location/tracker';
 import type { GoTrueClient, Session } from '@supabase/auth-js';
 import {
   createContext,
@@ -60,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const stopDiagnostics = useCallback(async () => {
     try {
-      await stopAndClearDiagnostics();
+      await Promise.all([clearTracking(), stopAndClearDiagnostics()]);
     } catch {
       if (mounted.current) {
         setState('blocked');
@@ -139,7 +140,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (previousId) clearRideSession();
             currentProfile.current = null;
             setProfile(null);
-            privacyCleanup.current = stopDiagnostics();
+            // Initial restoration preserves the encrypted queue for this account.
+            // A real account switch erases it before loading the new profile.
+            privacyCleanup.current = previousId ? stopDiagnostics() : stopAndClearDiagnostics();
             void privacyCleanup.current.catch(() => undefined);
           }
           if (event === 'PASSWORD_RECOVERY') setRecovery(true);
@@ -268,6 +271,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMessage('Signing out…');
     try {
       await sessionStorage.setItem(logoutIntentKey, 'pending');
+      const signingSession = currentSession.current;
+      await prepareTrackingSignOut(
+        signingSession
+          ? { apiUrl, accessToken: signingSession.access_token, userId: signingSession.user.id }
+          : undefined,
+      );
       await stopDiagnostics();
       await client?.stopAutoRefresh();
       if (client) {
