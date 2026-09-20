@@ -89,6 +89,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          # The action's default includes the obsolete SDK package "tools".
+          packages: 'platform-tools'
       - run: npm ci
       - run: npx expo prebuild --platform android --no-install
         working-directory: apps/mobile
