@@ -4,8 +4,16 @@ import { Button, Notice, Page, styles } from '../auth/components';
 import GroupMap from './GroupMap';
 import { projectGroup } from './model';
 import { useGroupLocations } from './use-group-locations';
-export function GroupRideMap({ id, name }: { id: string; name: string }) {
-  const live = useGroupLocations(id);
+export function GroupRideMap({
+  id,
+  name,
+  startedAt,
+}: {
+  id: string;
+  name: string;
+  startedAt: string | null;
+}) {
+  const live = useGroupLocations(id, startedAt);
   const group = live.snapshot ? projectGroup(live.snapshot, live.now) : null;
   return (
     <Page>
@@ -15,6 +23,15 @@ export function GroupRideMap({ id, name }: { id: string; name: string }) {
       <Text style={styles.detail}>
         Opening this map does not start location sharing. Green: live · amber: low accuracy · grey:
         stale. Paired markers use the rider’s position.
+      </Text>
+      <Notice>
+        {live.gaps
+          ? `${live.gaps.freshUnits}/${live.gaps.totalUnits} fresh reporting units · ${live.gaps.excludedUnits} excluded · ${live.gaps.matchedUnits} matched to route. Pairs count once. Route gaps are relative to the matched group median.`
+          : 'Gap indicators unavailable until positions are received.'}
+      </Notice>
+      <Text style={styles.detail}>
+        Route order needs a saved route and accurate, recent positions. Unknown loop laps or
+        interrupted tracking show unavailable order. Pillion gaps use the paired rider.
       </Text>
       <GroupMap data={group?.data ?? { type: 'FeatureCollection', features: [] }} />
       {group && !group.data.features.length && (
@@ -44,6 +61,20 @@ export function GroupRideMap({ id, name }: { id: string; name: string }) {
               Pillion: combined marker follows the rider. This person’s own position is listed
               separately below.
             </Text>
+          )}
+          <Text style={styles.detail}>
+            {(() => {
+              const gap = live.gaps?.details.find((detail) => detail.memberId === member.id);
+              return `${gap?.routeGapM == null ? 'Order unavailable' : `${Math.round(Math.abs(gap.routeGapM))} m ${gap.routeGapM < 0 ? 'behind' : 'ahead of'} group median along route`} · ${gap?.centreDistanceM == null ? 'Group-centre distance unavailable' : `${Math.round(gap.centreDistanceM)} m to group centre (straight line)`}`;
+            })()}
+          </Text>
+          {(member.sharingEnabled || member.id === live.snapshot?.ownMemberId) && (
+            <Link
+              href={{ pathname: '/ride', params: { id, view: 'trail', member: member.id } }}
+              style={styles.link}
+            >
+              View this person’s recorded trail →
+            </Link>
           )}
           {member.sample && (
             <>

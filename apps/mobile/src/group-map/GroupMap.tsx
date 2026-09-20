@@ -1,15 +1,26 @@
+import type { TrailGeometry } from './trails';
 import { Camera, GeoJSONSource, Layer, Map } from '@maplibre/maplibre-react-native';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { Button } from '../auth/components';
 import { mapTilerStyle } from '../device/policy';
 import type { GroupProjection } from './model';
-export default function GroupMap({ data }: { data: GroupProjection['data'] }) {
+export default function GroupMap({
+  data,
+  trail,
+}: {
+  data: GroupProjection['data'];
+  trail?: TrailGeometry;
+}) {
   const [fit, setFit] = useState(0);
   const [retry, setRetry] = useState(0);
   const [failed, setFailed] = useState(false);
   const style = mapTilerStyle(process.env.EXPO_PUBLIC_MAPTILER_KEY);
   const points = data.features.map((feature) => feature.geometry.coordinates);
+  for (const feature of trail?.features ?? []) {
+    if (feature.geometry.type === 'LineString') points.push(...feature.geometry.coordinates);
+    else points.push(feature.geometry.coordinates);
+  }
   if (!style)
     return <Text>Road map unavailable: configure the map key. Member details remain below.</Text>;
   return (
@@ -39,6 +50,33 @@ export default function GroupMap({ data }: { data: GroupProjection['data'] }) {
                 : { center: (points[0] as [number, number]) ?? [73.849, 18.526], zoom: 12 }
             }
           />
+          {trail && (
+            <GeoJSONSource id="member-trail" data={trail}>
+              <Layer
+                id="trail-line"
+                type="line"
+                filter={['==', ['get', 'kind'], 'recorded']}
+                paint={{ 'line-color': '#3b56b7', 'line-width': 4 }}
+              />
+              <Layer
+                id="trail-observations"
+                type="circle"
+                filter={['==', ['get', 'kind'], 'observation']}
+                paint={{ 'circle-color': '#3b56b7', 'circle-radius': 5 }}
+              />
+              <Layer
+                id="trail-gaps"
+                type="circle"
+                filter={['==', ['get', 'kind'], 'gap']}
+                paint={{
+                  'circle-color': '#ad6500',
+                  'circle-radius': 6,
+                  'circle-stroke-color': '#fff',
+                  'circle-stroke-width': 2,
+                }}
+              />
+            </GeoJSONSource>
+          )}
           <GeoJSONSource id="group-members" data={data}>
             <Layer
               id="member-dots"

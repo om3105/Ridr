@@ -1,3 +1,4 @@
+import { TrailView } from '../src/group-map/TrailView';
 import { GroupRideMap } from '../src/group-map/GroupRideMap';
 import { stopTracking } from '../src/location/tracker';
 import Constants from 'expo-constants';
@@ -25,11 +26,16 @@ import { RideAccess, useRides } from '../src/rides/provider';
 import { useScreenTask } from '../src/rides/use-screen-task';
 
 export default function RideScreen() {
-  const { id, view } = useLocalSearchParams<{ id?: string | string[]; view?: string }>();
+  const { id, view, member } = useLocalSearchParams<{
+    id?: string | string[];
+    view?: string;
+    member?: string;
+  }>();
   return (
     <RideAccess>
       <Lobby
         showControls={view === 'controls'}
+        trailMember={view === 'trail' ? member : undefined}
         key={typeof id === 'string' ? id : 'invalid'}
         id={typeof id === 'string' ? id : ''}
       />
@@ -37,7 +43,15 @@ export default function RideScreen() {
   );
 }
 
-function Lobby({ id, showControls }: { id: string; showControls: boolean }) {
+function Lobby({
+  id,
+  showControls,
+  trailMember,
+}: {
+  id: string;
+  showControls: boolean;
+  trailMember?: string;
+}) {
   const { run, invitations, rememberInvitation } = useRides();
   const capture = useScreenTask();
   const [snapshot, setSnapshot] = useState<RideSnapshot | null>(null);
@@ -202,14 +216,40 @@ function Lobby({ id, showControls }: { id: string; showControls: boolean }) {
       ? invite?.url?.replace(/^ridr:/, 'ridr-dev:')
       : invite?.url;
   const leader = snapshot?.membership.role === 'leader';
+  if (management && trailMember)
+    return (
+      <TrailView
+        key={trailMember}
+        id={id}
+        memberId={trailMember}
+        ownMemberId={management.membership.id}
+        active={management.ride.state === 'active' && !management.membership.leftAt}
+        name={
+          snapshot?.members.find((member) => member.id === trailMember)?.displayName ?? 'Member'
+        }
+      />
+    );
   if (management?.ride.state === 'active' && !management.membership.leftAt && !showControls)
-    return <GroupRideMap id={id} name={management.ride.name} />;
+    return (
+      <GroupRideMap id={id} name={management.ride.name} startedAt={management.ride.startedAt} />
+    );
   return (
     <Page>
       <Text accessibilityRole="header" style={styles.title}>
         {management?.ride.name ?? snapshot?.ride.name ?? 'Your ride.'}
       </Text>
       {!!message && <Notice>{message}</Notice>}
+      {management?.ride.startedAt && (
+        <Link
+          href={{
+            pathname: '/ride',
+            params: { id, view: 'trail', member: management.membership.id },
+          }}
+          style={styles.link}
+        >
+          View your recorded trail →
+        </Link>
+      )}
       {management && (
         <>
           {management.ride.state === 'ended' && (
