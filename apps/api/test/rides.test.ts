@@ -147,6 +147,7 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
   let revoked = false;
   const logs: string[] = [];
   const store: RideStore = {
+    trail: async (_actor, rideId, memberId) => ({ rideId, memberId, points: [], nextCursor: null }),
     enableSharing: async () => {
       throw new Error('Unused');
     },
@@ -297,6 +298,15 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
   };
   const post = (path: string, body: unknown) =>
     fetch(url + '/v1' + path, { method: 'POST', headers, body: JSON.stringify(body) });
+  await t.test('trail HTTP validates identities and bounded query shape', async () => {
+    const path = `${url}/v1/rides/${ride.id}/members/${membership.id}/trail`;
+    assert.equal((await fetch(path)).status, 401);
+    const result = await fetch(path, { headers });
+    assert.equal(result.status, 200);
+    assert.deepEqual((await result.json()).data.points, []);
+    assert.equal((await fetch(path + '?cursor=a&cursor=b', { headers })).status, 400);
+    assert.equal((await fetch(path + '?limit=999999', { headers })).status, 400);
+  });
   await t.test('outsider ride IDs cannot fetch or subscribe to coordinates', async () => {
     const deniedId = randomUUID();
     assert.equal((await fetch(`${url}/v1/rides/${deniedId}/locations`, { headers })).status, 404);

@@ -1205,4 +1205,78 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       await assert.rejects(enable(), rejectsCode('NOT_FOUND'));
     },
   );
+  await t.test(
+    'trail pages enforce membership, stable cursors, stop/leave privacy, retention and deletion',
+    async () => {
+      const leader = account(),
+        member = account(),
+        outsider = account();
+      const created = await create(leader),
+        id = created.ride.id;
+      const joined = await join(member, created, 'pillion'),
+        mid = joined.membership.id;
+      await assert.rejects(rides.trail(leader, id, mid), rejectsCode('NOT_FOUND'));
+      await rides.start(leader, id, await startChange(leader, id));
+      await sharingFixture(joined.membership);
+      await sharingFixture(created.membership);
+      await pool.query(
+        `INSERT INTO ridr.location_samples (id,membership_id,user_id,ride_id,device_id,consent_epoch,captured_at,lat,lon,accuracy_m)
+      SELECT gen_random_uuid(),s.membership_id,s.user_id,s.ride_id,s.device_id,s.consent_epoch,s.captured_at,18,73,10
+      FROM ridr.location_samples s CROSS JOIN generate_series(1,204) WHERE s.membership_id=$1`,
+        [mid],
+      );
+      const first = await rides.trail(leader, id, mid);
+      assert.equal(first.points.length, 200);
+      assert.ok(first.nextCursor);
+      const second = await rides.trail(leader, id, mid, first.nextCursor!);
+      assert.equal(second.points.length, 5);
+      assert.equal(second.nextCursor, null);
+      assert.equal(new Set([...first.points, ...second.points].map((p) => p.id)).size, 205);
+      await assert.rejects(
+        rides.trail(member, id, mid, first.nextCursor!),
+        rejectsCode('INVALID_REQUEST'),
+      );
+      await assert.rejects(
+        rides.trail(leader, id, created.membership.id, first.nextCursor!),
+        rejectsCode('INVALID_REQUEST'),
+      );
+      await assert.rejects(rides.trail(outsider, id, mid), rejectsCode('NOT_FOUND'));
+      await assert.rejects(rides.trail(leader, id, mid, 'garbage'), rejectsCode('INVALID_REQUEST'));
+      await rides.stopSharing(member, id, stop(1));
+      await assert.rejects(rides.trail(leader, id, mid), rejectsCode('NOT_FOUND'));
+      assert.equal((await rides.trail(member, id, mid)).points.length, 200);
+      await rides.leave(member, id, stop(2));
+      await assert.rejects(
+        rides.trail(member, id, created.membership.id),
+        rejectsCode('NOT_FOUND'),
+      );
+      assert.equal((await rides.trail(member, id, mid)).points.length, 200);
+      revoked.add(member.sessionId);
+      await assert.rejects(rides.trail(member, id, mid), rejectsCode('UNAUTHENTICATED'));
+      revoked.delete(member.sessionId);
+      await rides.end(leader, id, {
+        ...command(),
+        reason: 'completed',
+        capturedAt: new Date().toISOString(),
+        consentEpoch: 1,
+      });
+      await assert.rejects(rides.trail(leader, id, mid), rejectsCode('NOT_FOUND'));
+      await pool.query(
+        "UPDATE ridr.location_samples SET expires_at=now() - interval '1 second' WHERE membership_id=$1",
+        [mid],
+      );
+      assert.equal((await rides.trail(member, id, mid)).points.length, 0);
+      await pool.query('UPDATE ridr.location_samples SET expires_at=NULL WHERE membership_id=$1', [
+        mid,
+      ]);
+      await pool.query('DELETE FROM ridr.location_samples WHERE membership_id=$1', [mid]);
+      assert.equal((await rides.trail(member, id, mid)).points.length, 0);
+      assert.equal((await rides.trail(leader, id, created.membership.id)).points.length, 1);
+      await pool.query(
+        `UPDATE ridr.rides SET created_at=now()-interval '93 days',started_at=now()-interval '92 days',ended_at=now()-interval '91 days' WHERE id=$1`,
+        [id],
+      );
+      assert.equal((await rides.trail(leader, id, created.membership.id)).points.length, 0);
+    },
+  );
 });

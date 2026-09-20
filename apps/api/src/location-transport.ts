@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -62,6 +63,30 @@ export class LocationController {
         sharing: snapshot.membership.sharingEnabled,
         epoch: snapshot.membership.consentEpoch,
       },
+      response,
+    );
+  }
+  @Get('rides/:rideId/members/:memberId/trail')
+  async trail(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('memberId') memberId: string,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const actor = await this.actor(request);
+    if (
+      Object.keys(query).some((key) => key !== 'cursor') ||
+      (query.cursor !== undefined && typeof query.cursor !== 'string')
+    )
+      throw new ApiError(400, 'INVALID_REQUEST', 'Invalid trail query.');
+    return this.envelope(
+      await this.services!.store.trail(
+        actor,
+        rideId(id),
+        rideId(memberId),
+        query.cursor as string | undefined,
+      ),
       response,
     );
   }

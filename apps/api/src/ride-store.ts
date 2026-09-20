@@ -1,3 +1,4 @@
+import { readTrail, type TrailPage } from './trails.js';
 import {
   enableSharing,
   writeSample,
@@ -160,6 +161,15 @@ export class PostgresRides implements RideStore {
       (context) => enableSharing(context, change.revision),
     );
   }
+  trail(
+    account: VerifiedAccount,
+    id: string,
+    memberId: string,
+    cursor?: string,
+  ): Promise<TrailPage> {
+    return this.manage(account, id, null, (context) => readTrail(context, memberId, cursor));
+  }
+
   locations(account: VerifiedAccount, id: string): Promise<LiveLocations> {
     return this.manage(account, id, null, liveLocations);
   }

@@ -1,3 +1,4 @@
+import type { TrailPage } from './trails.js';
 import type { LocationSample, LocationAck, LiveLocations } from './location.js';
 import type { RouteChange, SavedRoute } from './route-planning.js';
 import type { VerifiedAccount } from './auth.js';
@@ -107,6 +108,12 @@ export interface RideStore {
     sample: LocationSample,
     historical?: boolean,
   ): Promise<LocationAck>;
+  trail(
+    account: VerifiedAccount,
+    rideId: string,
+    memberId: string,
+    cursor?: string,
+  ): Promise<TrailPage>;
   locations(account: VerifiedAccount, rideId: string): Promise<LiveLocations>;
   route(account: VerifiedAccount, rideId: string): Promise<SavedRoute | null>;
   saveRoute(account: VerifiedAccount, rideId: string, change: RouteChange): Promise<SavedRoute>;
