@@ -1,3 +1,4 @@
+import { GroupRideMap } from '../src/group-map/GroupRideMap';
 import { stopTracking } from '../src/location/tracker';
 import Constants from 'expo-constants';
 import { randomUUID } from 'expo-crypto';
@@ -24,15 +25,19 @@ import { RideAccess, useRides } from '../src/rides/provider';
 import { useScreenTask } from '../src/rides/use-screen-task';
 
 export default function RideScreen() {
-  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
+  const { id, view } = useLocalSearchParams<{ id?: string | string[]; view?: string }>();
   return (
     <RideAccess>
-      <Lobby key={typeof id === 'string' ? id : 'invalid'} id={typeof id === 'string' ? id : ''} />
+      <Lobby
+        showControls={view === 'controls'}
+        key={typeof id === 'string' ? id : 'invalid'}
+        id={typeof id === 'string' ? id : ''}
+      />
     </RideAccess>
   );
 }
 
-function Lobby({ id }: { id: string }) {
+function Lobby({ id, showControls }: { id: string; showControls: boolean }) {
   const { run, invitations, rememberInvitation } = useRides();
   const capture = useScreenTask();
   const [snapshot, setSnapshot] = useState<RideSnapshot | null>(null);
@@ -197,6 +202,8 @@ function Lobby({ id }: { id: string }) {
       ? invite?.url?.replace(/^ridr:/, 'ridr-dev:')
       : invite?.url;
   const leader = snapshot?.membership.role === 'leader';
+  if (management?.ride.state === 'active' && !management.membership.leftAt && !showControls)
+    return <GroupRideMap id={id} name={management.ride.name} />;
   return (
     <Page>
       <Text accessibilityRole="header" style={styles.title}>
@@ -219,6 +226,11 @@ function Lobby({ id }: { id: string }) {
             }}
           />
         </>
+      )}
+      {snapshot?.ride.state === 'active' && (
+        <Link href={{ pathname: '/ride', params: { id } }} style={styles.link}>
+          Open group map →
+        </Link>
       )}
       {snapshot?.ride.state === 'active' && (
         <Link href={{ pathname: '/sharing', params: { id } }} style={styles.link}>

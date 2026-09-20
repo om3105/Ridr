@@ -45,6 +45,15 @@ export interface Sharing {
   effectiveAt: string;
 }
 export interface LocationSnapshot {
+  rideId: string;
+  ownMemberId: string;
+  members: {
+    id: string;
+    displayName: string;
+    role: 'leader' | 'rider' | 'pillion';
+    sharingEnabled: boolean;
+  }[];
+  pairs: { id: string; riderMemberId: string; pillionMemberId: string }[];
   serverTime: string;
   sequence: number;
   items: {

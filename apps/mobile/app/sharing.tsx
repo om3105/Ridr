@@ -76,7 +76,7 @@ function Sharing({ id }: { id: string }) {
                     try {
                       if (error) throw error;
                       const data = (response as { data?: unknown }).data;
-                      setSnapshot(parseSnapshot(data));
+                      setSnapshot(parseSnapshot(data, id));
                       setConnected(true);
                     } catch {
                       setSnapshot(null);
@@ -89,7 +89,7 @@ function Sharing({ id }: { id: string }) {
             socket.on('location.snapshot', (data: unknown) => {
               if (active) {
                 try {
-                  setSnapshot(parseSnapshot(data));
+                  setSnapshot(parseSnapshot(data, id));
                   setConnected(true);
                 } catch {
                   setSnapshot(null);

@@ -1,0 +1,103 @@
+import { Camera, GeoJSONSource, Layer, Map } from '@maplibre/maplibre-react-native';
+import { useState } from 'react';
+import { Text, View } from 'react-native';
+import { Button } from '../auth/components';
+import { mapTilerStyle } from '../device/policy';
+import type { GroupProjection } from './model';
+export default function GroupMap({ data }: { data: GroupProjection['data'] }) {
+  const [fit, setFit] = useState(0);
+  const [retry, setRetry] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const style = mapTilerStyle(process.env.EXPO_PUBLIC_MAPTILER_KEY);
+  const points = data.features.map((feature) => feature.geometry.coordinates);
+  if (!style)
+    return <Text>Road map unavailable: configure the map key. Member details remain below.</Text>;
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={{ height: 380, borderRadius: 16, overflow: 'hidden' }}>
+        <Map
+          key={retry}
+          style={{ flex: 1 }}
+          mapStyle={style}
+          attribution
+          compass
+          onDidFailLoadingMap={() => setFailed(true)}
+        >
+          <Camera
+            key={`${fit}-${points.length ? 'located' : 'empty'}`}
+            initialViewState={
+              points.length > 1
+                ? {
+                    bounds: [
+                      Math.min(...points.map((p) => p[0]!)) - 0.0005,
+                      Math.max(-90, Math.min(...points.map((p) => p[1]!)) - 0.0005),
+                      Math.max(...points.map((p) => p[0]!)) + 0.0005,
+                      Math.min(90, Math.max(...points.map((p) => p[1]!)) + 0.0005),
+                    ],
+                    padding: { top: 60, bottom: 60, left: 60, right: 60 },
+                  }
+                : { center: (points[0] as [number, number]) ?? [73.849, 18.526], zoom: 12 }
+            }
+          />
+          <GeoJSONSource id="group-members" data={data}>
+            <Layer
+              id="member-dots"
+              type="circle"
+              paint={{
+                'circle-radius': 9,
+                'circle-color': ['get', 'color'],
+                'circle-stroke-color': '#fff',
+                'circle-stroke-width': 2,
+              }}
+            />
+            <Layer
+              id="member-names"
+              type="symbol"
+              layout={{
+                'text-field': ['get', 'label'],
+                'text-size': 13,
+                'text-offset': [0, 1.6],
+                'text-allow-overlap': false,
+              }}
+              paint={{ 'text-color': '#102f27', 'text-halo-color': '#fff', 'text-halo-width': 2 }}
+            />
+            <Layer
+              id="member-heading"
+              type="symbol"
+              filter={['!=', ['get', 'heading'], null]}
+              layout={{
+                'text-field': '↑',
+                'text-size': 24,
+                'text-rotate': ['coalesce', ['get', 'heading'], 0],
+                'text-rotation-alignment': 'map',
+                'text-allow-overlap': true,
+              }}
+              paint={{ 'text-color': '#fff' }}
+            />
+          </GeoJSONSource>
+        </Map>
+      </View>
+      {failed && (
+        <>
+          <Text accessibilityRole="alert">
+            Road tiles could not load. Check your connection; member details remain available.
+          </Text>
+          <Button
+            label="Retry map"
+            secondary
+            onPress={() => {
+              setFailed(false);
+              setRetry((value) => value + 1);
+            }}
+          />
+        </>
+      )}
+      <Button
+        label="Fit group"
+        secondary
+        disabled={!points.length}
+        onPress={() => setFit((value) => value + 1)}
+      />
+    </View>
+  );
+}

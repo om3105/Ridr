@@ -95,41 +95,99 @@ export function sendHistory(options: RideClientOptions, deviceId: string, sample
     },
   });
 }
-export function parseSnapshot(value: unknown): LocationSnapshot {
+const uuid = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+const finite = (value: unknown, min: number, max: number): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+export function parseSnapshot(value: unknown, expectedRideId?: string): LocationSnapshot {
   const data = object(value);
   if (
+    !uuid(data.rideId) ||
+    (expectedRideId !== undefined && data.rideId !== expectedRideId) ||
+    !uuid(data.ownMemberId) ||
     typeof data.serverTime !== 'string' ||
     !Number.isFinite(Date.parse(data.serverTime)) ||
     !Number.isSafeInteger(data.sequence) ||
+    Number(data.sequence) < 0 ||
     !Array.isArray(data.items) ||
-    data.items.length > 50
+    data.items.length > 50 ||
+    !Array.isArray(data.members) ||
+    data.members.length < 1 ||
+    data.members.length > 50 ||
+    !Array.isArray(data.pairs) ||
+    data.pairs.length > 25
   )
     bad();
-  for (const item of data.items) {
-    const row = object(item),
+  const members = new Map<string, Record<string, unknown>>();
+  for (const value of data.members) {
+    const member = object(value);
+    if (
+      !uuid(member.id) ||
+      members.has(member.id) ||
+      typeof member.displayName !== 'string' ||
+      !member.displayName.trim() ||
+      member.displayName.length > 80 ||
+      !['leader', 'rider', 'pillion'].includes(String(member.role)) ||
+      typeof member.sharingEnabled !== 'boolean'
+    )
+      bad();
+    members.set(member.id, member);
+  }
+  if (!members.has(data.ownMemberId)) bad();
+  const paired = new Set<string>(),
+    pairIds = new Set<string>();
+  for (const value of data.pairs) {
+    const pair = object(value);
+    if (
+      !uuid(pair.id) ||
+      pairIds.has(pair.id) ||
+      !uuid(pair.riderMemberId) ||
+      !uuid(pair.pillionMemberId) ||
+      pair.riderMemberId === pair.pillionMemberId ||
+      paired.has(pair.riderMemberId) ||
+      paired.has(pair.pillionMemberId) ||
+      !['leader', 'rider'].includes(String(members.get(pair.riderMemberId)?.role)) ||
+      members.get(pair.pillionMemberId)?.role !== 'pillion'
+    )
+      bad();
+    paired.add(pair.riderMemberId);
+    paired.add(pair.pillionMemberId);
+    pairIds.add(pair.id);
+  }
+  const reporting = new Set<string>();
+  const items = data.items.map((value) => {
+    const row = object(value),
       p = object(row.position);
     if (
-      typeof row.memberId !== 'string' ||
-      typeof row.sampleId !== 'string' ||
+      !uuid(row.memberId) ||
+      reporting.has(row.memberId) ||
+      !members.get(row.memberId)?.sharingEnabled ||
+      !uuid(row.sampleId) ||
       !['fresh', 'degraded', 'stale'].includes(String(row.freshness)) ||
-      typeof p.lat !== 'number' ||
-      !Number.isFinite(p.lat) ||
-      Math.abs(p.lat) > 90 ||
-      typeof p.lon !== 'number' ||
-      !Number.isFinite(p.lon) ||
-      Math.abs(p.lon) > 180 ||
-      typeof p.accuracyM !== 'number' ||
-      !Number.isFinite(p.accuracyM) ||
-      p.accuracyM < 0 ||
+      !finite(p.lat, -90, 90) ||
+      !finite(p.lon, -180, 180) ||
+      !finite(p.accuracyM, 0, 100000) ||
       typeof p.recordedAt !== 'string' ||
       !Number.isFinite(Date.parse(p.recordedAt))
     )
       bad();
-  }
-  return data as unknown as LocationSnapshot;
+    reporting.add(row.memberId);
+    return {
+      ...row,
+      position: { lat: p.lat, lon: p.lon, accuracyM: p.accuracyM, recordedAt: p.recordedAt },
+      speedKph: finite(row.speedKph, 0, 500) ? row.speedKph : null,
+      headingDegrees:
+        finite(row.headingDegrees, 0, 360) && row.headingDegrees < 360 ? row.headingDegrees : null,
+    };
+  });
+  return { ...data, items } as unknown as LocationSnapshot;
 }
 export function getLocations(options: RideClientOptions, rideId: string) {
-  return request(options, { path: `/v1/rides/${rideId}/locations`, parse: parseSnapshot });
+  return request(options, {
+    path: `/v1/rides/${rideId}/locations`,
+    parse: (value) => parseSnapshot(value, rideId),
+  });
 }
 
 export function getSharingStatus(options: RideClientOptions, rideId: string) {
