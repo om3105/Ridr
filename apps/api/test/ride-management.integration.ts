@@ -1112,7 +1112,7 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
         outsider = account();
       const created = await create(leader),
         id = created.ride.id;
-      await join(member, created, 'pillion');
+      const joined = await join(member, created, 'pillion');
       const device = randomUUID();
       await rides.registerDevice(member, device, 'android');
       await assert.rejects(rides.registerDevice(leader, device, 'ios'), rejectsCode('FORBIDDEN'));
@@ -1123,6 +1123,7 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
         });
       await assert.rejects(enable(), rejectsCode('STATE_CONFLICT'));
       await rides.start(leader, id, await startChange(leader, id));
+      const pair = await pairFixture(created, created.membership, joined.membership, false);
       const consent = await enable();
       const make = (at = new Date().toISOString()) =>
         parseSample({
@@ -1156,7 +1157,19 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       const expected = [first, older, newer]
         .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt) || a.id.localeCompare(b.id))
         .at(-1)!;
-      assert.equal((await rides.locations(leader, id)).items[0]!.sampleId, expected.id);
+      const live = await rides.locations(leader, id);
+      assert.equal(live.items[0]!.sampleId, expected.id);
+      assert.equal(live.rideId, id);
+      assert.equal(live.ownMemberId, created.membership.id);
+      assert.equal(live.members.length, 2);
+      assert.equal(live.members.find((m) => m.id === joined.membership.id)?.sharingEnabled, true);
+      assert.deepEqual(live.pairs, [
+        {
+          id: pair.pairId,
+          riderMemberId: created.membership.id,
+          pillionMemberId: joined.membership.id,
+        },
+      ]);
       await assert.rejects(
         rides.sample(member, device, make(new Date(Date.now() + 10000).toISOString())),
         rejectsCode('CLOCK_SKEW'),

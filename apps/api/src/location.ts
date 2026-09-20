@@ -30,6 +30,15 @@ export interface LocationAck {
   sequence: number;
 }
 export interface LiveLocations {
+  rideId: string;
+  ownMemberId: string;
+  members: {
+    id: string;
+    displayName: string;
+    role: 'leader' | 'rider' | 'pillion';
+    sharingEnabled: boolean;
+  }[];
+  pairs: { id: string; riderMemberId: string; pillionMemberId: string }[];
   serverTime: string;
   sequence: number;
   items: {
@@ -271,6 +280,17 @@ export async function liveLocations(context: ManagementContext): Promise<LiveLoc
     JOIN ridr.memberships m ON m.id=l.membership_id WHERE m.ride_id=$1 AND m.left_at IS NULL AND m.sharing AND m.consent_epoch=s.consent_epoch ORDER BY m.id`,
     [ride.id],
   );
+  const pairs = await client.query<{
+    id: string;
+    rider_member_id: string;
+    pillion_member_id: string;
+  }>(
+    `SELECT p.id,p.rider_member_id,p.pillion_member_id FROM ridr.pairs p
+     JOIN ridr.memberships r ON r.id=p.rider_member_id
+     JOIN ridr.memberships m ON m.id=p.pillion_member_id
+     WHERE p.ride_id=$1 AND p.ended_at IS NULL AND r.left_at IS NULL AND m.left_at IS NULL ORDER BY p.id`,
+    [ride.id],
+  );
   const now = Date.now();
   const sequence = integer(
     (
@@ -281,6 +301,21 @@ export async function liveLocations(context: ManagementContext): Promise<LiveLoc
     ).rows[0]!.event_sequence,
   );
   return {
+    rideId: ride.id,
+    ownMemberId: context.own.id,
+    members: context.members
+      .filter((member) => !member.left_at)
+      .map((member) => ({
+        id: member.id,
+        displayName: member.display_name,
+        role: member.id === ride.leader_member_id ? 'leader' : member.physical_role,
+        sharingEnabled: member.sharing,
+      })),
+    pairs: pairs.rows.map((pair) => ({
+      id: pair.id,
+      riderMemberId: pair.rider_member_id,
+      pillionMemberId: pair.pillion_member_id,
+    })),
     serverTime: new Date(now).toISOString(),
     sequence,
     items: rows.rows.map((row) => ({

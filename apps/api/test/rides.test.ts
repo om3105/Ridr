@@ -154,7 +154,25 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
     sample: async () => {
       throw new Error('Unused');
     },
-    locations: async () => ({ serverTime: new Date().toISOString(), sequence: 0, items: [] }),
+    locations: async (_actor, id) => {
+      if (id !== ride.id) throw new ApiError(404, 'NOT_FOUND', 'Ride not found.');
+      return {
+        rideId: ride.id,
+        ownMemberId: membership.id,
+        members: [
+          {
+            id: membership.id,
+            displayName: membership.displayName,
+            role: membership.role,
+            sharingEnabled: false,
+          },
+        ],
+        pairs: [],
+        serverTime: new Date().toISOString(),
+        sequence: 0,
+        items: [],
+      };
+    },
     route: async () => null,
     saveRoute: async (actor, id, change) => {
       assert.equal(actor.id, account.id);
@@ -279,6 +297,34 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
   };
   const post = (path: string, body: unknown) =>
     fetch(url + '/v1' + path, { method: 'POST', headers, body: JSON.stringify(body) });
+  await t.test('outsider ride IDs cannot fetch or subscribe to coordinates', async () => {
+    const deniedId = randomUUID();
+    assert.equal((await fetch(`${url}/v1/rides/${deniedId}/locations`, { headers })).status, 404);
+    const socket = io(`${url}/v1/rides`, {
+      transports: ['websocket'],
+      auth: { token: 'private-test-token' },
+      reconnection: false,
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        socket.once('connect', resolve);
+        socket.once('connect_error', reject);
+      });
+      let delivered = false;
+      socket.on('location.snapshot', () => {
+        delivered = true;
+      });
+      const result = await socket
+        .timeout(2000)
+        .emitWithAck('subscribe', { rideId: deniedId, afterSequence: 0 });
+      assert.equal(result.error.code, 'NOT_FOUND');
+      assert.equal(result.data, undefined);
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      assert.equal(delivered, false);
+    } finally {
+      socket.disconnect();
+    }
+  });
   await t.test(
     'live sockets authenticate, deliver snapshots and disconnect revoked sessions',
     async () => {
