@@ -26,3 +26,6 @@ coverage/
 
 # Firebase service-account private credentials must never enter Git.
 *firebase-adminsdk*.json
+
+# Supply Android Firebase client configuration locally or through an EAS file variable.
+/apps/mobile/google-services.json

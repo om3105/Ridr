@@ -19,7 +19,9 @@ const config: ExpoConfig = {
   },
   android: {
     package: isDevelopment ? 'com.ridr.app.dev' : 'com.ridr.app',
-    ...(isDevelopment ? { googleServicesFile: './google-services.json' } : {}),
+    ...(isDevelopment
+      ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json' }
+      : {}),
     permissions: [],
   },
   web: { bundler: 'metro', output: 'static', name: 'Ridr development preview' },
