@@ -1,3 +1,4 @@
+import { RideWarnings } from './RideWarnings';
 import { Link } from 'expo-router';
 import { Text, View } from 'react-native';
 import { Button, Notice, Page, styles } from '../auth/components';
@@ -20,6 +21,7 @@ export function GroupRideMap({
       <Text style={styles.eyebrow}>GROUP MAP</Text>
       <Text style={styles.title}>{name}</Text>
       <Notice>{live.message}</Notice>
+      <RideWarnings snapshot={live.snapshot} now={live.now} />
       <Text style={styles.detail}>
         Opening this map does not start location sharing. Green: live · amber: low accuracy · grey:
         stale. Paired markers use the rider’s position.

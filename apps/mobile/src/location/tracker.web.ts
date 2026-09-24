@@ -23,3 +23,7 @@ export function subscribeTracking(listener: (status: TrackingStatus) => void) {
 }
 
 export async function prepareTrackingSignOut(_restored?: RideClientOptions) {}
+
+export function trackingDeviceId(): string | null {
+  return null;
+}

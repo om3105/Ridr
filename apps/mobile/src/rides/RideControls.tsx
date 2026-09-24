@@ -1,3 +1,4 @@
+import { AlertControls } from './AlertControls';
 import { stopTracking } from '../location/tracker';
 import { randomUUID } from 'expo-crypto';
 import { useEffect, useRef, useState } from 'react';
@@ -209,6 +210,7 @@ export function RideControls({
 
   return (
     <View style={{ gap: 18 }}>
+      <AlertControls management={management} onChanged={onChanged} />
       {!!cleanupWarning && <Notice>{cleanupWarning}</Notice>}
       {!!message && <Notice>{message}</Notice>}
       {(safety || uncertain) && (

@@ -181,6 +181,40 @@ export function parseSnapshot(value: unknown, expectedRideId?: string): Location
         finite(row.headingDegrees, 0, 360) && row.headingDegrees < 360 ? row.headingDegrees : null,
     };
   });
+  if (data.alertSettings !== undefined) {
+    const settings = object(data.alertSettings);
+    if (
+      !Number.isInteger(settings.stragglerDistanceM) ||
+      !finite(settings.stragglerDistanceM, 200, 2000) ||
+      ![10, 20, 30].includes(Number(settings.batteryThreshold))
+    )
+      bad();
+  }
+  if (data.alerts !== undefined) {
+    if (!Array.isArray(data.alerts) || data.alerts.length > 100) bad();
+    const ids = new Set<string>();
+    for (const value of data.alerts) {
+      const warning = object(value),
+        position = object(warning.position);
+      if (
+        !uuid(warning.id) ||
+        ids.has(warning.id) ||
+        !uuid(warning.memberId) ||
+        !reporting.has(warning.memberId) ||
+        !['battery', 'straggler'].includes(String(warning.kind)) ||
+        !finite(warning.value, 0, 40075000) ||
+        (warning.kind === 'battery' && !finite(warning.value, 0, 100)) ||
+        typeof warning.createdAt !== 'string' ||
+        !Number.isFinite(Date.parse(warning.createdAt)) ||
+        !finite(position.lat, -90, 90) ||
+        !finite(position.lon, -180, 180) ||
+        typeof position.recordedAt !== 'string' ||
+        !Number.isFinite(Date.parse(position.recordedAt))
+      )
+        bad();
+      ids.add(warning.id);
+    }
+  }
   return { ...data, items } as unknown as LocationSnapshot;
 }
 export function getLocations(options: RideClientOptions, rideId: string) {

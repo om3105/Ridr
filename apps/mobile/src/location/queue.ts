@@ -133,6 +133,7 @@ export class LocationQueue {
     accuracy: number | null;
     speed: number | null;
     heading: number | null;
+    batteryPercent?: number | null;
   }) {
     const consent = this.state.consent;
     if (
@@ -196,7 +197,13 @@ export class LocationQueue {
           fix.heading < 360
             ? fix.heading
             : null,
-        batteryPercent: null,
+        batteryPercent:
+          typeof fix.batteryPercent === 'number' &&
+          Number.isInteger(fix.batteryPercent) &&
+          fix.batteryPercent >= 0 &&
+          fix.batteryPercent <= 100
+            ? fix.batteryPercent
+            : null,
       },
     };
     this.state.samples.push(sample);

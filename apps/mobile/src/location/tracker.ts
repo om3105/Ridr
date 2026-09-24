@@ -1,3 +1,5 @@
+import { renewWarningPush } from '../notifications/push';
+import * as Battery from 'expo-battery';
 import * as Crypto from 'expo-crypto';
 import * as Location from 'expo-location';
 import * as SecureStore from 'expo-secure-store';
@@ -102,6 +104,7 @@ async function retry() {
     )
       await stopTracking();
     await active.flush();
+    void renewWarningPush(options, active.state.deviceId).catch(() => undefined);
     retries = 0;
     retryAfter = 0;
   } catch (error) {
@@ -292,8 +295,14 @@ async function capture(locations: Location.LocationObject[]) {
       publish({ ...status, message: 'Location permission or services are off. Sharing stopped.' });
       return;
     }
+    const level = await Battery.getBatteryLevelAsync().catch(() => -1);
+    const batteryPercent = level >= 0 && level <= 1 ? Math.round(level * 100) : null;
     for (const location of locations)
-      await active.capture({ timestamp: location.timestamp, ...location.coords });
+      await active.capture({
+        timestamp: location.timestamp,
+        ...location.coords,
+        batteryPercent: Date.now() - location.timestamp <= 5000 ? batteryPercent : null,
+      });
     await retry();
   } catch {
     await stopTracking().catch(() => undefined);
@@ -367,4 +376,8 @@ async function eraseStorage() {
   const db = await SQLite.openDatabaseAsync(DB, { useNewConnection: true });
   await db.closeAsync();
   await SQLite.deleteDatabaseAsync(DB);
+}
+
+export function trackingDeviceId() {
+  return engine?.state.deviceId ?? null;
 }

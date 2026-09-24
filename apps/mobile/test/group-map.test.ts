@@ -124,3 +124,40 @@ test('new snapshots replace removed positions and delayed responses cannot resto
   assert.equal(newerSnapshot(null, next), next);
   assert.equal(projectGroup(next, Date.parse(next.serverTime)).data.features.length, 0);
 });
+
+test('warnings require an eligible member, unique ID and valid thresholds', () => {
+  const snapshot = fixture();
+  snapshot.alertSettings = { stragglerDistanceM: 500, batteryThreshold: 20 };
+  snapshot.alerts = [
+    {
+      id: randomUUID(),
+      memberId: snapshot.members[0]!.id,
+      kind: 'battery',
+      value: 19,
+      createdAt: snapshot.serverTime,
+      position: snapshot.items[0]!.position,
+    },
+  ];
+  assert.equal(parseSnapshot(snapshot).alerts?.length, 1);
+  assert.throws(() =>
+    parseSnapshot({ ...snapshot, alerts: [...snapshot.alerts!, ...snapshot.alerts!] }),
+  );
+  assert.throws(() =>
+    parseSnapshot({ ...snapshot, alerts: [{ ...snapshot.alerts![0], memberId: randomUUID() }] }),
+  );
+  assert.throws(() =>
+    parseSnapshot({ ...snapshot, alerts: [{ ...snapshot.alerts![0], value: 101 }] }),
+  );
+  assert.throws(() =>
+    parseSnapshot({
+      ...snapshot,
+      alertSettings: { stragglerDistanceM: 199, batteryThreshold: 20 },
+    }),
+  );
+  assert.throws(() =>
+    parseSnapshot({
+      ...snapshot,
+      alertSettings: { stragglerDistanceM: 500, batteryThreshold: 15 },
+    }),
+  );
+});

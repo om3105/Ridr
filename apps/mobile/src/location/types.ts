@@ -9,7 +9,7 @@ export interface Sample {
     position: { lat: number; lon: number; accuracyM: number; recordedAt: string };
     speedKph: number | null;
     headingDegrees: number | null;
-    batteryPercent: null;
+    batteryPercent: number | null;
   };
 }
 export interface Consent {
@@ -44,7 +44,17 @@ export interface Sharing {
   revision: number;
   effectiveAt: string;
 }
+export interface RideWarning {
+  id: string;
+  kind: 'battery' | 'straggler';
+  memberId: string;
+  createdAt: string;
+  value: number;
+  position: { lat: number; lon: number; recordedAt: string };
+}
 export interface LocationSnapshot {
+  alerts?: RideWarning[];
+  alertSettings?: { stragglerDistanceM: number; batteryThreshold: number };
   rideId: string;
   ownMemberId: string;
   members: {
