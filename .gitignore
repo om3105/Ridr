@@ -23,3 +23,6 @@ coverage/
 *.tsbuildinfo
 *.log
 /data/
+
+# Firebase service-account private credentials must never enter Git.
+*firebase-adminsdk*.json

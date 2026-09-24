@@ -5,6 +5,8 @@ const isDevelopment = process.env.APP_VARIANT !== 'production';
 const config: ExpoConfig = {
   name: isDevelopment ? 'Ridr Dev' : 'Ridr',
   slug: 'ridr',
+  owner: 'omdeos-team',
+  extra: { eas: { projectId: '324bae2b-d412-4d75-8d66-af4f13ef778f' } },
   version: '0.1.0',
   scheme: isDevelopment ? 'ridr-dev' : 'ridr',
   orientation: 'portrait',
@@ -17,6 +19,7 @@ const config: ExpoConfig = {
   },
   android: {
     package: isDevelopment ? 'com.ridr.app.dev' : 'com.ridr.app',
+    ...(isDevelopment ? { googleServicesFile: './google-services.json' } : {}),
     permissions: [],
   },
   web: { bundler: 'metro', output: 'static', name: 'Ridr development preview' },
