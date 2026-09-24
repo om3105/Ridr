@@ -1,4 +1,5 @@
 import { WarningPush, sealPush, validPushToken } from './warning-push.js';
+import { readMessages, sendMessage, type MessageEvent } from './messages.js';
 import {
   evaluateAlerts,
   changeAlertSettings,
@@ -167,6 +168,22 @@ export class PostgresRides implements RideStore {
       enabled: token !== null,
       expiresAt: token === null ? null : new Date(account.expiresAt * 1000).toISOString(),
     };
+  }
+  sendMessage(account: VerifiedAccount, event: MessageEvent) {
+    return this.manage(
+      account,
+      event.rideId,
+      {
+        method: 'POST',
+        path: `/v1/rides/${event.rideId}/events`,
+        key: event.id,
+        body: event,
+      },
+      (context) => sendMessage(context, event),
+    );
+  }
+  messages(account: VerifiedAccount, id: string, afterSequence: number, limit: number) {
+    return this.manage(account, id, null, (context) => readMessages(context, afterSequence, limit));
   }
   async pushStatus(account: VerifiedAccount, deviceId: string) {
     return this.transaction(account, async (client) => {

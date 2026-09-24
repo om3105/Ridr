@@ -1,4 +1,5 @@
 import type { AlertSettings } from './ride-alerts.js';
+import type { MessageEvent, RideMessage } from './messages.js';
 import type { TrailPage } from './trails.js';
 import type { LocationSample, LocationAck, LiveLocations } from './location.js';
 import type { RouteChange, SavedRoute } from './route-planning.js';
@@ -93,6 +94,13 @@ export interface RotateInvite extends Partial<MotionContext> {
 }
 
 export interface RideStore {
+  sendMessage(account: VerifiedAccount, event: MessageEvent): Promise<RideMessage>;
+  messages(
+    account: VerifiedAccount,
+    rideId: string,
+    afterSequence: number,
+    limit: number,
+  ): Promise<{ items: RideMessage[]; nextSequence: number | null }>;
   registerPush(
     account: VerifiedAccount,
     deviceId: string,

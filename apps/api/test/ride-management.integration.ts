@@ -1,5 +1,6 @@
 import { WarningPush, sealPush } from '../src/warning-push.js';
 import { parseSample } from '../src/location.js';
+import { parseMessage } from '../src/messages.js';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
@@ -216,6 +217,7 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       ]);
       for (const table of [
         'outbox_events',
+        'messages',
         'status_links',
         'active_memberships',
         'headcount_confirmations',
@@ -1347,6 +1349,70 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       assert.equal((await rides.locations(leader, id)).alerts?.length, 0);
       await assert.rejects(
         rides.acknowledgeAlert(member, id, device, warning.id),
+        rejectsCode('NOT_FOUND'),
+      );
+    },
+  );
+  await t.test(
+    'text and pins retain server order, reject outsiders, and stop with the ride',
+    async () => {
+      const leader = account(),
+        member = account(),
+        outsider = account();
+      const created = await create(leader),
+        id = created.ride.id;
+      await join(member, created, 'pillion');
+      await rides.start(leader, id, await startChange(leader, id));
+      const event = (kind: 'message.text' | 'message.pin', text: string) => {
+        const proof = motion();
+        return parseMessage({
+          v: 1,
+          type: kind,
+          id: randomUUID(),
+          rideId: id,
+          capturedAt: proof.capturedAt,
+          payload: {
+            text,
+            motion: proof.motion,
+            ...(kind === 'message.pin' ? { coordinate: { lat: 18.52, lon: 73.85 } } : {}),
+          },
+        });
+      };
+      const text = event('message.text', 'Meet at the next stop');
+      const first = await rides.sendMessage(member, text);
+      assert.equal((await rides.sendMessage(member, text)).id, first.id);
+      await assert.rejects(
+        rides.sendMessage(member, { ...text, payload: { ...text.payload, text: 'Changed' } }),
+        rejectsCode('IDEMPOTENCY_CONFLICT'),
+      );
+      const pinned = await rides.sendMessage(leader, event('message.pin', 'Stop here'));
+      assert.ok(first.sequence < pinned.sequence);
+      const page = await rides.messages(member, id, 0, 1);
+      assert.deepEqual(
+        page.items.map((item) => item.id),
+        [first.id],
+      );
+      assert.equal(page.nextSequence, first.sequence);
+      assert.deepEqual(
+        (await rides.messages(member, id, first.sequence, 10)).items.map((item) => item.id),
+        [pinned.id],
+      );
+      assert.deepEqual(pinned.coordinate, { lat: 18.52, lon: 73.85 });
+      await assert.rejects(rides.messages(outsider, id, 0, 10), rejectsCode('NOT_FOUND'));
+      await assert.rejects(
+        rides.sendMessage(outsider, event('message.text', 'Forged')),
+        rejectsCode('NOT_FOUND'),
+      );
+      await rides.leave(member, id, stop(0));
+      await assert.rejects(rides.messages(member, id, 0, 10), rejectsCode('NOT_FOUND'));
+      await rides.end(leader, id, {
+        ...command(),
+        reason: 'completed',
+        capturedAt: new Date().toISOString(),
+        consentEpoch: 0,
+      });
+      await assert.rejects(
+        rides.sendMessage(leader, event('message.text', 'Too late')),
         rejectsCode('NOT_FOUND'),
       );
     },

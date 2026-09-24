@@ -22,10 +22,16 @@ import type { Socket } from 'socket.io';
 import type { Request, Response } from 'express';
 import { ApiError, unauthenticated, unavailable } from './api-errors.js';
 import { RIDES, rideId, type RideServices } from './rides.js';
-import { exactObject, parseSample } from './location.js';
+import { exactObject, parseSample, type LocationSample } from './location.js';
+import { parseMessage, type MessageEvent } from './messages.js';
 import { RideLimiter } from './ride-limits.js';
 const rateLimited = () =>
   new ApiError(429, 'RATE_LIMITED', 'Too many location requests. Wait and retry.');
+function objectEvent(value: unknown): LocationSample | MessageEvent {
+  if (!value || typeof value !== 'object' || !('type' in value))
+    throw new ApiError(400, 'INVALID_REQUEST', 'Provide a supported event.');
+  return value.type === 'location.sample' ? parseSample(value) : parseMessage(value);
+}
 
 @Controller()
 export class LocationController {
@@ -126,6 +132,31 @@ export class LocationController {
     const actor = await this.actor(request);
     return this.envelope(await this.services!.store.locations(actor, rideId(id)), response);
   }
+  @Get('rides/:rideId/messages')
+  async messages(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const actor = await this.actor(request);
+    if (Object.keys(query).some((key) => key !== 'afterSequence' && key !== 'limit'))
+      throw new ApiError(400, 'INVALID_REQUEST', 'Invalid message query.');
+    const after = query.afterSequence === undefined ? 0 : Number(query.afterSequence);
+    const limit = query.limit === undefined ? 50 : Number(query.limit);
+    if (
+      !Number.isSafeInteger(after) ||
+      after < 0 ||
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > 100
+    )
+      throw new ApiError(400, 'INVALID_REQUEST', 'Invalid message page.');
+    return this.envelope(
+      await this.services!.store.messages(actor, rideId(id), after, limit),
+      response,
+    );
+  }
   @Post('rides/:rideId/events')
   @HttpCode(200)
   async sample(
@@ -136,11 +167,22 @@ export class LocationController {
   ) {
     const actor = await this.actor(request);
     const value = exactObject(body, ['event']);
-    const sample = parseSample(value.event);
-    if (sample.rideId !== rideId(id))
+    const event = objectEvent(value.event);
+    if (event.rideId !== rideId(id))
       throw new ApiError(400, 'INVALID_REQUEST', 'Ride does not match.');
+    if (
+      event.type !== 'location.sample' &&
+      request.header('idempotency-key')?.toLowerCase() !== event.id
+    )
+      throw new ApiError(400, 'INVALID_REQUEST', 'Idempotency-Key must match message ID.');
     return this.envelope(
-      await this.services!.store.sample(actor, rideId(request.header('x-device-id') ?? ''), sample),
+      event.type === 'location.sample'
+        ? await this.services!.store.sample(
+            actor,
+            rideId(request.header('x-device-id') ?? ''),
+            event,
+          )
+        : await this.services!.store.sendMessage(actor, event),
       response,
     );
   }
@@ -186,7 +228,7 @@ export class LocationGateway implements OnApplicationShutdown {
   private readonly limiter = new RideLimiter({ accountPerMinute: 120, ipPerMinute: 120 });
   private readonly subscriptions = new Map<
     Socket,
-    { rideId: string; busy: boolean; timer: ReturnType<typeof setInterval> }
+    { rideId: string; busy: boolean; sequence: number; timer: ReturnType<typeof setInterval> }
   >();
   constructor(@Inject(RIDES) private readonly services: RideServices | null) {}
   private async actor(socket: Socket) {
@@ -224,6 +266,7 @@ export class LocationGateway implements OnApplicationShutdown {
       const subscription = {
         rideId: id,
         busy: false,
+        sequence: data.sequence,
         timer: setInterval(() => {
           void this.deliver(socket);
         }, 1000),
@@ -242,8 +285,13 @@ export class LocationGateway implements OnApplicationShutdown {
     try {
       const actor = await this.actor(socket);
       const data = await this.services!.store.locations(actor, subscription.rideId);
-      if (socket.connected && this.subscriptions.get(socket) === subscription)
+      if (socket.connected && this.subscriptions.get(socket) === subscription) {
         socket.emit('location.snapshot', data);
+        if (data.sequence > subscription.sequence) {
+          subscription.sequence = data.sequence;
+          socket.emit('ride.sequence', { rideId: subscription.rideId, sequence: data.sequence });
+        }
+      }
     } catch {
       this.handleDisconnect(socket);
       socket.emit('access.revoked');
@@ -258,12 +306,16 @@ export class LocationGateway implements OnApplicationShutdown {
       const actor = await this.actor(socket);
       if (this.limiter.consume('account', actor.id) !== null) throw rateLimited();
       const value = exactObject(body, ['event']);
+      const event = objectEvent(value.event);
       return {
-        data: await this.services!.store.sample(
-          actor,
-          rideId(String(socket.handshake.auth.deviceId)),
-          parseSample(value.event),
-        ),
+        data:
+          event.type === 'location.sample'
+            ? await this.services!.store.sample(
+                actor,
+                rideId(String(socket.handshake.auth.deviceId)),
+                event,
+              )
+            : await this.services!.store.sendMessage(actor, event),
       };
     } catch (error) {
       return this.failure(error);

@@ -147,6 +147,10 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
   let revoked = false;
   const logs: string[] = [];
   const store: RideStore = {
+    sendMessage: async () => {
+      throw new Error('Unused');
+    },
+    messages: async () => ({ items: [], nextSequence: null }),
     registerPush: async () => ({ enabled: false, expiresAt: null }),
     pushStatus: async () => ({ configured: false, registered: false, deliveries: [] }),
     alertSettings: async (_actor, _id, change) => ({ value: change.value }),
