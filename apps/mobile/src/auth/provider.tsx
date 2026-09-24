@@ -1,4 +1,5 @@
 import { clearTracking, prepareTrackingSignOut } from '../location/tracker';
+import { clearChatQueue } from '../chat/storage';
 import type { GoTrueClient, Session } from '@supabase/auth-js';
 import {
   createContext,
@@ -142,7 +143,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setProfile(null);
             // Initial restoration preserves the encrypted queue for this account.
             // A real account switch erases it before loading the new profile.
-            privacyCleanup.current = previousId ? stopDiagnostics() : stopAndClearDiagnostics();
+            privacyCleanup.current = previousId
+              ? Promise.all([stopDiagnostics(), clearChatQueue()]).then(() => undefined)
+              : stopAndClearDiagnostics();
             void privacyCleanup.current.catch(() => undefined);
           }
           if (event === 'PASSWORD_RECOVERY') setRecovery(true);
@@ -151,6 +154,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setState(loggingOut.current ? 'blocked' : 'signed-out');
             // SDK callbacks stay synchronous; cleanup runs outside its auth operation.
             void stopDiagnostics().catch(() => undefined);
+            if (!loggingOut.current && !previousId)
+              void clearChatQueue().catch(() => undefined);
           }
         }).data.subscription;
         const restoreEpoch = epoch.current;
@@ -278,6 +283,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           : undefined,
       );
       await stopDiagnostics();
+      await clearChatQueue();
       await client?.stopAutoRefresh();
       if (client) {
         await revokeSession(client);

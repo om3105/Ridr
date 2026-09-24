@@ -8,9 +8,15 @@ import type { GroupProjection } from './model';
 export default function GroupMap({
   data,
   trail,
+  pins = [],
+  onPinSelect,
+  focus,
 }: {
   data: GroupProjection['data'];
   trail?: TrailGeometry;
+  pins?: { id: string; lat: number; lon: number }[];
+  onPinSelect?: (coordinate: { lat: number; lon: number }) => void;
+  focus?: { lat: number; lon: number } | null;
 }) {
   const [fit, setFit] = useState(0);
   const [retry, setRetry] = useState(0);
@@ -21,6 +27,7 @@ export default function GroupMap({
     if (feature.geometry.type === 'LineString') points.push(...feature.geometry.coordinates);
     else points.push(feature.geometry.coordinates);
   }
+  for (const pin of pins) points.push([pin.lon, pin.lat]);
   if (!style)
     return <Text>Road map unavailable: configure the map key. Member details remain below.</Text>;
   return (
@@ -33,21 +40,28 @@ export default function GroupMap({
           attribution
           compass
           onDidFailLoadingMap={() => setFailed(true)}
+          onPress={(event) => {
+            const [lon, lat] = event.nativeEvent.lngLat;
+            if (onPinSelect && Number.isFinite(lat) && Number.isFinite(lon))
+              onPinSelect({ lat, lon });
+          }}
         >
           <Camera
-            key={`${fit}-${points.length ? 'located' : 'empty'}`}
+            key={`${fit}-${focus?.lat ?? ''}-${focus?.lon ?? ''}-${points.length ? 'located' : 'empty'}`}
             initialViewState={
-              points.length > 1
-                ? {
-                    bounds: [
-                      Math.min(...points.map((p) => p[0]!)) - 0.0005,
-                      Math.max(-90, Math.min(...points.map((p) => p[1]!)) - 0.0005),
-                      Math.max(...points.map((p) => p[0]!)) + 0.0005,
-                      Math.min(90, Math.max(...points.map((p) => p[1]!)) + 0.0005),
-                    ],
-                    padding: { top: 60, bottom: 60, left: 60, right: 60 },
-                  }
-                : { center: (points[0] as [number, number]) ?? [73.849, 18.526], zoom: 12 }
+              focus
+                ? { center: [focus.lon, focus.lat], zoom: 15 }
+                : points.length > 1
+                  ? {
+                      bounds: [
+                        Math.min(...points.map((p) => p[0]!)) - 0.0005,
+                        Math.max(-90, Math.min(...points.map((p) => p[1]!)) - 0.0005),
+                        Math.max(...points.map((p) => p[0]!)) + 0.0005,
+                        Math.min(90, Math.max(...points.map((p) => p[1]!)) + 0.0005),
+                      ],
+                      padding: { top: 60, bottom: 60, left: 60, right: 60 },
+                    }
+                  : { center: (points[0] as [number, number]) ?? [73.849, 18.526], zoom: 12 }
             }
           />
           {trail && (
@@ -72,6 +86,30 @@ export default function GroupMap({
                   'circle-color': '#ad6500',
                   'circle-radius': 6,
                   'circle-stroke-color': '#fff',
+                  'circle-stroke-width': 2,
+                }}
+              />
+            </GeoJSONSource>
+          )}
+          {!!pins.length && (
+            <GeoJSONSource
+              id="message-pins"
+              data={{
+                type: 'FeatureCollection',
+                features: pins.map((pin) => ({
+                  type: 'Feature',
+                  properties: { id: pin.id },
+                  geometry: { type: 'Point', coordinates: [pin.lon, pin.lat] },
+                })),
+              }}
+            >
+              <Layer
+                id="message-pin-dots"
+                type="circle"
+                paint={{
+                  'circle-radius': 8,
+                  'circle-color': '#7546b4',
+                  'circle-stroke-color': '#ffffff',
                   'circle-stroke-width': 2,
                 }}
               />

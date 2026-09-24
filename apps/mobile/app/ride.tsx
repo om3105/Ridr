@@ -1,4 +1,5 @@
 import { TrailView } from '../src/group-map/TrailView';
+import { RideChat } from '../src/chat/RideChat';
 import { GroupRideMap } from '../src/group-map/GroupRideMap';
 import { stopTracking } from '../src/location/tracker';
 import Constants from 'expo-constants';
@@ -26,16 +27,42 @@ import { RideAccess, useRides } from '../src/rides/provider';
 import { useScreenTask } from '../src/rides/use-screen-task';
 
 export default function RideScreen() {
-  const { id, view, member } = useLocalSearchParams<{
+  const { id, view, member, lat, lon, focusLat, focusLon } = useLocalSearchParams<{
     id?: string | string[];
     view?: string;
     member?: string;
+    lat?: string;
+    lon?: string;
+    focusLat?: string;
+    focusLon?: string;
   }>();
   return (
     <RideAccess>
       <Lobby
         showControls={view === 'controls'}
         trailMember={view === 'trail' ? member : undefined}
+        chatPin={
+          view === 'chat' &&
+          lat !== undefined &&
+          lon !== undefined &&
+          Number.isFinite(Number(lat)) &&
+          Number.isFinite(Number(lon)) &&
+          Math.abs(Number(lat)) <= 90 &&
+          Math.abs(Number(lon)) <= 180
+            ? { lat: Number(lat), lon: Number(lon) }
+            : null
+        }
+        showChat={view === 'chat'}
+        mapFocus={
+          focusLat !== undefined &&
+          focusLon !== undefined &&
+          Number.isFinite(Number(focusLat)) &&
+          Number.isFinite(Number(focusLon)) &&
+          Math.abs(Number(focusLat)) <= 90 &&
+          Math.abs(Number(focusLon)) <= 180
+            ? { lat: Number(focusLat), lon: Number(focusLon) }
+            : null
+        }
         key={typeof id === 'string' ? id : 'invalid'}
         id={typeof id === 'string' ? id : ''}
       />
@@ -47,10 +74,16 @@ function Lobby({
   id,
   showControls,
   trailMember,
+  chatPin,
+  showChat,
+  mapFocus,
 }: {
   id: string;
   showControls: boolean;
   trailMember?: string;
+  chatPin: { lat: number; lon: number } | null;
+  showChat: boolean;
+  mapFocus: { lat: number; lon: number } | null;
 }) {
   const { run, invitations, rememberInvitation } = useRides();
   const capture = useScreenTask();
@@ -216,6 +249,7 @@ function Lobby({
       ? invite?.url?.replace(/^ridr:/, 'ridr-dev:')
       : invite?.url;
   const leader = snapshot?.membership.role === 'leader';
+  if (showChat) return <RideChat id={id} pin={chatPin} />;
   if (management && trailMember)
     return (
       <TrailView
@@ -231,7 +265,12 @@ function Lobby({
     );
   if (management?.ride.state === 'active' && !management.membership.leftAt && !showControls)
     return (
-      <GroupRideMap id={id} name={management.ride.name} startedAt={management.ride.startedAt} />
+      <GroupRideMap
+        id={id}
+        name={management.ride.name}
+        startedAt={management.ride.startedAt}
+        focus={mapFocus}
+      />
     );
   return (
     <Page>

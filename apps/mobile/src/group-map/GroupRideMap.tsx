@@ -1,7 +1,10 @@
 import { RideWarnings } from './RideWarnings';
+import { getMessages, type ChatMessage } from '../chat/api';
 import { Link } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { Button, Notice, Page, styles } from '../auth/components';
+import { useRides } from '../rides/provider';
 import GroupMap from './GroupMap';
 import { projectGroup } from './model';
 import { useGroupLocations } from './use-group-locations';
@@ -9,13 +12,54 @@ export function GroupRideMap({
   id,
   name,
   startedAt,
+  focus,
 }: {
   id: string;
   name: string;
   startedAt: string | null;
+  focus: { lat: number; lon: number } | null;
 }) {
   const live = useGroupLocations(id, startedAt);
   const group = live.snapshot ? projectGroup(live.snapshot, live.now) : null;
+  const { run } = useRides();
+  const [pins, setPins] = useState<ChatMessage[]>([]);
+  const lastPinSequence = useRef(0);
+  const [chosen, setChosen] = useState<{ lat: number; lon: number } | null>(null);
+  const available = live.snapshot !== null;
+  useEffect(() => {
+    if (!available) {
+      setPins([]);
+      lastPinSequence.current = 0;
+      setChosen(null);
+      return;
+    }
+    let active = true;
+    let reading = false;
+    const update = async () => {
+      if (reading) return;
+      reading = true;
+      try {
+        const page = await run((options) => getMessages(options, id, lastPinSequence.current));
+        if (active) {
+          if (page.items.length) lastPinSequence.current = page.items.at(-1)!.sequence;
+          setPins((previous) => [...previous, ...page.items.filter((item) => item.kind === 'pin')]);
+        }
+      } catch {
+        // Keep previously accepted pins through a temporary connection failure.
+      } finally {
+        reading = false;
+      }
+    };
+    void update();
+    const timer = setInterval(() => {
+      void update();
+    }, 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      lastPinSequence.current = 0;
+    };
+  }, [id, run, available]);
   return (
     <Page>
       <Text style={styles.eyebrow}>GROUP MAP</Text>
@@ -35,7 +79,47 @@ export function GroupRideMap({
         Route order needs a saved route and accurate, recent positions. Unknown loop laps or
         interrupted tracking show unavailable order. Pillion gaps use the paired rider.
       </Text>
-      <GroupMap data={group?.data ?? { type: 'FeatureCollection', features: [] }} />
+      <Text style={styles.detail}>
+        Purple markers are message pins; rider positions use their status colours. Tap the map to
+        choose a coordinate for a new pinned message.
+      </Text>
+      <GroupMap
+        data={group?.data ?? { type: 'FeatureCollection', features: [] }}
+        focus={focus}
+        pins={pins.flatMap((item) =>
+          item.coordinate ? [{ id: item.id, ...item.coordinate }] : [],
+        )}
+        onPinSelect={setChosen}
+      />
+      {chosen && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Chosen message pin</Text>
+          <Text selectable style={styles.detail}>
+            {chosen.lat.toFixed(5)}, {chosen.lon.toFixed(5)}
+          </Text>
+          <Link
+            href={{
+              pathname: '/ride',
+              params: { id, view: 'chat', lat: String(chosen.lat), lon: String(chosen.lon) },
+            }}
+            style={styles.link}
+          >
+            Write at this pin →
+          </Link>
+        </View>
+      )}
+      {pins.map((pin) => (
+        <View key={pin.id} style={styles.card}>
+          <Text style={styles.label}>Message pin · {pin.authorName}</Text>
+          <Text style={styles.detail}>{pin.text}</Text>
+          <Text selectable style={styles.detail}>
+            {pin.coordinate?.lat.toFixed(5)}, {pin.coordinate?.lon.toFixed(5)}
+          </Text>
+        </View>
+      ))}
+      <Link href={{ pathname: '/ride', params: { id, view: 'chat' } }} style={styles.link}>
+        Open ride chat →
+      </Link>
       {group && !group.data.features.length && (
         <Notice>No shared rider positions yet. See each person’s status below.</Notice>
       )}
