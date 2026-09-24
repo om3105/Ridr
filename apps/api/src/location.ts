@@ -1,3 +1,5 @@
+import { loadAlerts, currentAlerts } from './ride-alerts.js';
+import type { Warning } from './alert-machine.js';
 import { randomUUID } from 'node:crypto';
 import { ApiError } from './api-errors.js';
 import { UUID } from './auth.js';
@@ -30,6 +32,8 @@ export interface LocationAck {
   sequence: number;
 }
 export interface LiveLocations {
+  alerts?: Warning[];
+  alertSettings?: { stragglerDistanceM: number; batteryThreshold: number };
   rideId: string;
   ownMemberId: string;
   members: {
@@ -208,8 +212,8 @@ export async function writeSample(
     throw new ApiError(409, 'SHARING_DISABLED', 'Location sharing is off.');
   const p = sample.payload;
   await client.query(
-    `INSERT INTO ridr.location_samples (id,membership_id,user_id,ride_id,device_id,consent_epoch,captured_at,lat,lon,accuracy_m,speed_mps,heading_deg)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    `INSERT INTO ridr.location_samples (id,membership_id,user_id,ride_id,device_id,consent_epoch,captured_at,lat,lon,accuracy_m,speed_mps,heading_deg,battery_percent)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
     [
       sample.id,
       own.id,
@@ -223,6 +227,7 @@ export async function writeSample(
       p.position.accuracyM,
       p.speedKph === null ? null : p.speedKph / 3.6,
       p.headingDegrees,
+      p.batteryPercent,
     ],
   );
   if (!historical && now.getTime() - captured.getTime() <= 30000) {
@@ -263,7 +268,10 @@ export async function writeSample(
     sequence,
   };
 }
-export async function liveLocations(context: ManagementContext): Promise<LiveLocations> {
+export async function liveLocations(
+  context: ManagementContext,
+  includeAlerts = true,
+): Promise<LiveLocations> {
   active(context);
   const { client, ride } = context;
   const rows = await client.query<{
@@ -300,7 +308,7 @@ export async function liveLocations(context: ManagementContext): Promise<LiveLoc
       )
     ).rows[0]!.event_sequence,
   );
-  return {
+  const snapshot: LiveLocations = {
     rideId: ride.id,
     ownMemberId: context.own.id,
     members: context.members
@@ -337,4 +345,13 @@ export async function liveLocations(context: ManagementContext): Promise<LiveLoc
             : 'fresh',
     })),
   };
+  if (includeAlerts) {
+    const state = await loadAlerts(context);
+    snapshot.alerts = await currentAlerts(context, snapshot);
+    snapshot.alertSettings = {
+      stragglerDistanceM: context.ride.straggler_metres,
+      batteryThreshold: state.batteryThresholds[context.own.id] ?? 20,
+    };
+  }
+  return snapshot;
 }

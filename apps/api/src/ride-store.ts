@@ -1,3 +1,10 @@
+import { WarningPush, sealPush, validPushToken } from './warning-push.js';
+import {
+  evaluateAlerts,
+  changeAlertSettings,
+  acknowledgeAlert,
+  type AlertSettings,
+} from './ride-alerts.js';
 import { readTrail, type TrailPage } from './trails.js';
 import {
   enableSharing,
@@ -110,12 +117,14 @@ function decodeCursor(cursor: string | undefined, account: VerifiedAccount): Lis
 
 export class PostgresRides implements RideStore {
   private readonly pool: Pool;
+  private readonly push: WarningPush | null;
 
   constructor(
     databaseUrl: string,
     private readonly verifier: TokenVerifier,
     logger: OperationalLogger,
     private readonly router: Router = osrmRouter({}),
+    pushKey?: string,
   ) {
     this.pool = new Pool({
       connectionString: databaseUrl,
@@ -127,8 +136,57 @@ export class PostgresRides implements RideStore {
       query_timeout: 3500,
     });
     this.pool.on('error', () => logger.write('ride_pool_error'));
+    this.push = pushKey
+      ? new WarningPush(this.pool, Buffer.from(pushKey, 'base64'), (account, id) =>
+          this.locations(account, id),
+        )
+      : null;
+    this.push?.start();
   }
 
+  async registerPush(account: VerifiedAccount, deviceId: string, token: string | null) {
+    if (token !== null && !validPushToken(token))
+      throw new ApiError(400, 'INVALID_REQUEST', 'Invalid Expo push token.');
+    if (token !== null && !this.push)
+      throw new ApiError(
+        503,
+        'TEMPORARILY_UNAVAILABLE',
+        'Background notifications are not configured on this server.',
+      );
+    await this.transaction(account, async (client) => {
+      await this.lockAccount(client, account);
+      const ciphertext =
+        token === null ? null : sealPush({ token, account }, this.push!.key, deviceId);
+      const result = await client.query(
+        'UPDATE ridr.devices SET push_token_ciphertext=$3 WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL',
+        [deviceId, account.id, ciphertext],
+      );
+      if (!result.rowCount) throw new ApiError(403, 'FORBIDDEN', 'Register your device first.');
+    });
+    return {
+      enabled: token !== null,
+      expiresAt: token === null ? null : new Date(account.expiresAt * 1000).toISOString(),
+    };
+  }
+  async pushStatus(account: VerifiedAccount, deviceId: string) {
+    return this.transaction(account, async (client) => {
+      await this.lockAccount(client, account);
+      const device = await client.query(
+        'SELECT push_token_ciphertext IS NOT NULL AS registered FROM ridr.devices WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL',
+        [deviceId, account.id],
+      );
+      if (!device.rowCount) throw new ApiError(403, 'FORBIDDEN', 'Register your device first.');
+      const result = await client.query<{ state: string; count: string }>(
+        `SELECT state,count(*) FROM ridr.warning_push_deliveries WHERE device_id=$1 AND updated_at > now()-interval '24 hours' GROUP BY state`,
+        [deviceId],
+      );
+      return {
+        configured: !!this.push,
+        registered: device.rows[0].registered,
+        deliveries: result.rows.map((row) => ({ state: row.state, count: Number(row.count) })),
+      };
+    });
+  }
   async registerDevice(
     account: VerifiedAccount,
     deviceId: string,
@@ -170,8 +228,26 @@ export class PostgresRides implements RideStore {
     return this.manage(account, id, null, (context) => readTrail(context, memberId, cursor));
   }
 
+  alertSettings(account: VerifiedAccount, id: string, change: AlertSettings) {
+    return this.manage(
+      account,
+      id,
+      {
+        method: 'PUT',
+        path: `/v1/rides/${id}/alert-settings`,
+        key: change.idempotencyKey,
+        body: change,
+      },
+      (context) => changeAlertSettings(context, change),
+    );
+  }
+  acknowledgeAlert(account: VerifiedAccount, id: string, deviceId: string, alertId: string) {
+    return this.manage(account, id, null, async (context) =>
+      acknowledgeAlert(context, deviceId, alertId, await liveLocations(context, false)),
+    );
+  }
   locations(account: VerifiedAccount, id: string): Promise<LiveLocations> {
-    return this.manage(account, id, null, liveLocations);
+    return this.manage(account, id, null, (context) => liveLocations(context));
   }
   sample(
     account: VerifiedAccount,
@@ -192,6 +268,7 @@ export class PostgresRides implements RideStore {
       );
       if (replay) return { ...replay, status: 'duplicate' };
       const result = await writeSample(context, deviceId, sample, historical);
+      if (!historical) await evaluateAlerts(context, await liveLocations(context, false), sample);
       await this.saveReceipt(context.client, account, sample.id, operation, digest, 200, result);
       return result;
     });
@@ -947,6 +1024,7 @@ export class PostgresRides implements RideStore {
   }
 
   async close(): Promise<void> {
+    await this.push?.close();
     await this.pool.end();
   }
 }

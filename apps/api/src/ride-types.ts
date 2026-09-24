@@ -1,3 +1,4 @@
+import type { AlertSettings } from './ride-alerts.js';
 import type { TrailPage } from './trails.js';
 import type { LocationSample, LocationAck, LiveLocations } from './location.js';
 import type { RouteChange, SavedRoute } from './route-planning.js';
@@ -92,6 +93,19 @@ export interface RotateInvite extends Partial<MotionContext> {
 }
 
 export interface RideStore {
+  registerPush(
+    account: VerifiedAccount,
+    deviceId: string,
+    token: string | null,
+  ): Promise<{ enabled: boolean; expiresAt: string | null }>;
+  pushStatus(
+    account: VerifiedAccount,
+    deviceId: string,
+  ): Promise<{
+    configured: boolean;
+    registered: boolean;
+    deliveries: { state: string; count: number }[];
+  }>;
   enableSharing(
     account: VerifiedAccount,
     rideId: string,
@@ -114,6 +128,17 @@ export interface RideStore {
     memberId: string,
     cursor?: string,
   ): Promise<TrailPage>;
+  alertSettings(
+    account: VerifiedAccount,
+    rideId: string,
+    change: AlertSettings,
+  ): Promise<{ value: number }>;
+  acknowledgeAlert(
+    account: VerifiedAccount,
+    rideId: string,
+    deviceId: string,
+    alertId: string,
+  ): Promise<{ acknowledged: boolean }>;
   locations(account: VerifiedAccount, rideId: string): Promise<LiveLocations>;
   route(account: VerifiedAccount, rideId: string): Promise<SavedRoute | null>;
   saveRoute(account: VerifiedAccount, rideId: string, change: RouteChange): Promise<SavedRoute>;

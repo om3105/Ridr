@@ -82,6 +82,7 @@ export async function createApp(
           accounts.verifier,
           logger,
           osrmRouter(config.routing ?? {}),
+          config.pushTokenKey,
         )
       : null);
   const rides: RideServices | null =

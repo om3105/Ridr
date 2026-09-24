@@ -9,6 +9,7 @@ export interface ApiConfig {
   rideLimits: RideLimits;
   routing?: Partial<Record<'cycling' | 'driving', string>>;
   auth?: AuthConfig;
+  pushTokenKey?: string;
 }
 
 export interface AuthConfig {
@@ -136,7 +137,15 @@ export function readConfig(env: NodeJS.ProcessEnv): ApiConfig {
     }
   }
 
+  const pushTokenKey = env.PUSH_TOKEN_KEY;
+  if (
+    pushTokenKey &&
+    (!/^[A-Za-z0-9+/]{43}=$/.test(pushTokenKey) ||
+      Buffer.from(pushTokenKey, 'base64').length !== 32)
+  )
+    throw new Error('PUSH_TOKEN_KEY must be a base64 encoded 32-byte encryption key.');
   return {
+    ...(pushTokenKey ? { pushTokenKey } : {}),
     environment: environment as ApiConfig['environment'],
     host,
     port,

@@ -1,3 +1,4 @@
+import { WarningPush, sealPush } from '../src/warning-push.js';
 import { parseSample } from '../src/location.js';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -1203,6 +1204,151 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       });
       await assert.rejects(rides.locations(member, id), rejectsCode('NOT_FOUND'));
       await assert.rejects(enable(), rejectsCode('NOT_FOUND'));
+    },
+  );
+  await t.test(
+    'warning state survives retries and restarts, with member and device privacy',
+    async () => {
+      const leader = account(),
+        member = account(),
+        outsider = account();
+      const created = await create(leader),
+        id = created.ride.id;
+      const joined = await join(member, created);
+      await rides.start(leader, id, await startChange(leader, id));
+      const device = randomUUID();
+      await rides.registerDevice(member, device, 'android');
+      const consent = await rides.enableSharing(member, id, {
+        ...command(),
+        revision: (await rides.management(member, id)).membership.revision,
+      });
+      const settings = { ...command(), kind: 'battery' as const, value: 20 };
+      await rides.alertSettings(member, id, settings);
+      const time = Date.now();
+      const sample = (batteryPercent: number, offset: number) => {
+        const capturedAt = new Date(time + offset).toISOString();
+        return parseSample({
+          v: 1,
+          type: 'location.sample',
+          id: randomUUID(),
+          rideId: id,
+          capturedAt,
+          payload: {
+            consentEpoch: consent.consentEpoch,
+            position: { lat: 18.52, lon: 73.85, accuracyM: 12, recordedAt: capturedAt },
+            speedKph: 0,
+            headingDegrees: null,
+            batteryPercent,
+          },
+        });
+      };
+      await rides.sample(member, device, sample(20, 0));
+      assert.equal((await rides.locations(leader, id)).alerts?.length, 0);
+      const low = sample(19, 1);
+      await rides.sample(member, device, low);
+      const warning = (await rides.locations(leader, id)).alerts![0]!;
+      assert.equal(warning.kind, 'battery');
+      assert.equal(warning.memberId, joined.membership.id);
+      assert.equal(warning.value, 19);
+      await rides.sample(member, device, low);
+      const reopened = new PostgresRides(
+        databaseUrl,
+        verifier,
+        new OperationalLogger(() => undefined),
+      );
+      try {
+        assert.equal((await reopened.locations(member, id)).alerts![0]!.id, warning.id);
+      } finally {
+        await reopened.close();
+      }
+      const key = randomBytes(32),
+        token = 'ExpoPushToken[abcdefghijklmnopqrstuv]';
+      await pool.query('UPDATE ridr.devices SET push_token_ciphertext=$2 WHERE id=$1', [
+        device,
+        sealPush({ token, account: member }, key, device),
+      ]);
+      const sent: unknown[] = [];
+      const worker = new WarningPush(
+        pool,
+        key,
+        (actor, rideId) => rides.locations(actor, rideId),
+        async (url, init) => {
+          if (String(url).endsWith('getReceipts'))
+            return new Response(
+              JSON.stringify({
+                data: { ticket: { status: 'error', details: { error: 'DeviceNotRegistered' } } },
+              }),
+            );
+          sent.push(JSON.parse(String(init?.body)));
+          return new Response(JSON.stringify({ data: { status: 'ok', id: 'ticket' } }));
+        },
+      );
+      await worker.tick();
+      await worker.tick();
+      assert.equal(sent.length, 1, 'duplicate live snapshots cannot duplicate a push');
+      assert.deepEqual(sent[0], {
+        to: token,
+        title: 'Ridr ride update',
+        body: 'Open Ridr to check current ride warnings.',
+        data: { rideId: id, warningId: warning.id },
+        ttl: 30,
+        priority: 'high',
+        channelId: 'ride-warnings',
+      });
+      assert.deepEqual((await rides.pushStatus(member, device)).deliveries, [
+        { state: 'accepted', count: 1 },
+      ]);
+      await pool.query(
+        "UPDATE ridr.warning_push_deliveries SET updated_at=now()-interval '16 minutes' WHERE device_id=$1",
+        [device],
+      );
+      await worker.tick();
+      assert.equal((await rides.pushStatus(member, device)).registered, false);
+      assert.deepEqual((await rides.pushStatus(member, device)).deliveries, [
+        { state: 'failed', count: 1 },
+      ]);
+      await worker.close();
+      await assert.rejects(
+        rides.acknowledgeAlert(leader, id, device, warning.id),
+        rejectsCode('FORBIDDEN'),
+      );
+      await assert.rejects(
+        rides.acknowledgeAlert(outsider, id, device, warning.id),
+        rejectsCode('NOT_FOUND'),
+      );
+      await rides.acknowledgeAlert(member, id, device, warning.id);
+      await rides.acknowledgeAlert(member, id, device, warning.id);
+      const saved = (
+        await pool.query('SELECT body FROM ridr.ride_alert_state WHERE ride_id=$1', [id])
+      ).rows[0].body;
+      assert.deepEqual(saved.acknowledgements[device], [warning.id]);
+      await assert.rejects(
+        rides.alertSettings(member, id, {
+          ...command(),
+          kind: 'straggler',
+          value: 1000,
+          revision: (await rides.management(member, id)).ride.revision,
+          ...motion(),
+        }),
+        rejectsCode('FORBIDDEN'),
+      );
+      await rides.alertSettings(leader, id, {
+        ...command(),
+        kind: 'straggler',
+        value: 1000,
+        revision: (await rides.management(leader, id)).ride.revision,
+        ...motion(),
+      });
+      assert.equal((await rides.locations(member, id)).alertSettings?.stragglerDistanceM, 1000);
+      await rides.alertSettings(member, id, { ...command(), kind: 'battery', value: 10 });
+      assert.equal((await rides.locations(leader, id)).alerts?.length, 0);
+      assert.equal((await rides.locations(member, id)).alertSettings?.batteryThreshold, 10);
+      await rides.stopSharing(member, id, stop(consent.consentEpoch));
+      assert.equal((await rides.locations(leader, id)).alerts?.length, 0);
+      await assert.rejects(
+        rides.acknowledgeAlert(member, id, device, warning.id),
+        rejectsCode('NOT_FOUND'),
+      );
     },
   );
   await t.test(

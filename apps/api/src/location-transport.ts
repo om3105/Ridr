@@ -49,6 +49,33 @@ export class LocationController {
       throw new ApiError(400, 'INVALID_REQUEST', 'Choose iOS or Android.');
     await this.services!.store.registerDevice(account, rideId(id), value.platform);
   }
+  @Put('me/devices/:deviceId/push')
+  async push(
+    @Req() request: Request,
+    @Param('deviceId') id: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request),
+      value = exactObject(body, ['token']);
+    if (value.token !== null && typeof value.token !== 'string')
+      throw new ApiError(400, 'INVALID_REQUEST', 'Provide a push token or null.');
+    return this.envelope(
+      await this.services!.store.registerPush(account, rideId(id), value.token),
+      response,
+    );
+  }
+  @Get('me/devices/:deviceId/push')
+  async pushStatus(
+    @Req() request: Request,
+    @Param('deviceId') id: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    return this.envelope(
+      await this.services!.store.pushStatus(await this.actor(request), rideId(id)),
+      response,
+    );
+  }
   @Get('rides/:rideId/location-status')
   async status(
     @Req() request: Request,

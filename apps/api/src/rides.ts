@@ -442,6 +442,58 @@ export class RideController {
     return envelope(result, response, result.revision);
   }
 
+  @Put('rides/:rideId/alert-settings')
+  async alertSettings(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const actor = await this.actor(request, response);
+    json(request.headers['content-type']);
+    const value = object(body);
+    const kind = value.kind;
+    if (kind !== 'straggler' && kind !== 'battery')
+      throw new ApiError(400, 'INVALID_REQUEST', 'Choose a warning setting.');
+    exact(
+      value,
+      kind === 'straggler' ? ['kind', 'value', 'motion', 'capturedAt'] : ['kind', 'value'],
+    );
+    if (
+      !Number.isInteger(value.value) ||
+      (kind === 'battery'
+        ? ![10, 20, 30].includes(Number(value.value))
+        : Number(value.value) < 200 || Number(value.value) > 2000)
+    )
+      throw new ApiError(400, 'INVALID_REQUEST', 'Choose a valid threshold.');
+    const result = await this.services!.store.alertSettings(actor, rideId(id), {
+      kind,
+      value: Number(value.value),
+      idempotencyKey: commandKey(request.header('idempotency-key')),
+      ...(kind === 'straggler'
+        ? { ...parseMotion(value), revision: rideRevision(request.header('if-match')) }
+        : {}),
+    });
+    return envelope(result, response);
+  }
+  @Post('rides/:rideId/alerts/:alertId/acknowledgements')
+  async acknowledgeAlert(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('alertId') alertId: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const actor = await this.actor(request, response);
+    return envelope(
+      await this.services!.store.acknowledgeAlert(
+        actor,
+        rideId(id),
+        rideId(request.header('x-device-id') ?? ''),
+        rideId(alertId),
+      ),
+      response,
+    );
+  }
   @Put('rides/:rideId/sharing')
   @HttpCode(200)
   async stopSharing(
