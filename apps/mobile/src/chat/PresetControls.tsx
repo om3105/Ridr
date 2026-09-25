@@ -6,7 +6,7 @@ import { useAuth } from '../auth/provider';
 import { Button, Notice, styles } from '../auth/components';
 import { getRideManagement, RideError } from '../rides/api';
 import { useRides } from '../rides/provider';
-import { sendMessage, type Draft } from './api';
+import { getMessageReceipts, sendMessage, type Draft } from './api';
 import { draftRecovery } from './recovery';
 import { pillionPresets, riderPresets, type PresetCode } from './presets';
 import {
@@ -31,6 +31,15 @@ export function PresetControls({ id, role }: { id: string; role: 'rider' | 'pill
     try {
       const state = await run((options) => getRideManagement(options, id));
       const active = state.ride.state === 'active' && !state.membership.leftAt;
+      const queued = (await listPending(owner, id)).filter(
+        (item) => item.draft.type === 'message.preset',
+      );
+      if (queued.length) {
+        const acceptedIds = await run((options) =>
+          getMessageReceipts(options, id, queued.map((item) => item.draft.id)),
+        );
+        for (const acceptedId of acceptedIds) await removePending(acceptedId);
+      }
       for (const item of await listPending(owner, id)) {
         if (item.draft.type !== 'message.preset' || item.state !== 'pending') continue;
         if (draftRecovery(item.draft, active, Date.now()) === 'unsent') {

@@ -9,7 +9,14 @@ import { Button, Field, Notice, Page, styles } from '../auth/components';
 import { getRideManagement, RideError } from '../rides/api';
 import { useMotionCheck } from '../rides/use-motion-check';
 import { useRides } from '../rides/provider';
-import { draftLabel, getMessages, sendMessage, type ChatMessage, type Draft } from './api';
+import {
+  draftLabel,
+  getMessageReceipts,
+  getMessages,
+  sendMessage,
+  type ChatMessage,
+  type Draft,
+} from './api';
 import { draftRecovery } from './recovery';
 import { VoiceComposer } from './VoiceComposer';
 import {
@@ -64,6 +71,13 @@ export function RideChat({ id, pin }: { id: string; pin: { lat: number; lon: num
         const active = state.ride.state === 'active' && !state.membership.leftAt;
         setCanSend(active);
         setPillion(state.membership.physicalRole === 'pillion');
+        const queued = await listPending(owner, id);
+        if (queued.length) {
+          const accepted = await run((options) =>
+            getMessageReceipts(options, id, queued.map((item) => item.draft.id)),
+          );
+          for (const acceptedId of accepted) await removePending(acceptedId);
+        }
         if (!active) {
           setMessages([]);
           setMore(null);
@@ -73,7 +87,7 @@ export function RideChat({ id, pin }: { id: string; pin: { lat: number; lon: num
             if (item.state !== 'unsent') await setPendingState(item.draft.id, 'unsent');
           setPending(await listPending(owner, id));
           setNotice(
-            'This ride is no longer active. Drafts were not sent. Copy any text you want to keep.',
+            'This ride is no longer active. Accepted drafts were reconciled; remaining drafts were not sent. Copy any text you want to keep.',
           );
           return;
         }

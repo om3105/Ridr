@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { parseChatMessage, type Draft } from '../src/chat/api';
+import { getMessageReceipts, parseChatMessage, type Draft } from '../src/chat/api';
 import { draftRecovery } from '../src/chat/recovery';
 
 const rideId = randomUUID();
@@ -81,4 +81,29 @@ test('pending drafts retry only during an active ride and within 24 hours', () =
   assert.equal(draftRecovery(draft, false, Date.parse(now) + 1000), 'unsent');
   assert.equal(draftRecovery(draft, true, Date.parse(now) + 86400001), 'unsent');
   assert.equal(draftRecovery({ ...draft, capturedAt: 'invalid' }, true, Date.now()), 'unsent');
+});
+test('receipt lookup keeps stable IDs and rejects unexpected acceptance', async () => {
+  const acceptedId = randomUUID();
+  const missingId = randomUUID();
+  const options = {
+    apiUrl: 'https://api.example.test',
+    accessToken: 'test-token',
+    userId: randomUUID(),
+    fetcher: async (_url: string | URL | Request, init?: RequestInit) => {
+      assert.equal(init?.method, 'POST');
+      assert.equal(init?.headers && (init.headers as Record<string, string>)['Idempotency-Key'], undefined);
+      assert.deepEqual(JSON.parse(String(init?.body)), { ids: [acceptedId, missingId] });
+      return Response.json({ data: { accepted: [acceptedId] }, requestId: randomUUID() });
+    },
+  };
+  assert.deepEqual(await getMessageReceipts(options, rideId, [acceptedId, missingId]), [acceptedId]);
+  assert.throws(() => getMessageReceipts(options, rideId, ['bad-id']));
+  assert.throws(() => getMessageReceipts(options, 'bad-ride', [acceptedId]));
+  await assert.rejects(
+    getMessageReceipts(
+      { ...options, fetcher: async () => Response.json({ data: { accepted: [randomUUID()] }, requestId: randomUUID() }) },
+      rideId,
+      [acceptedId, missingId],
+    ),
+  );
 });

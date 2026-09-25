@@ -3,7 +3,7 @@ import { inspectVoice, probeVoice } from './voice-media.js';
 import type { MotionContext } from './ride-types.js';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { readMessages, sendMessage, type MessageEvent } from './messages.js';
+import { acceptedMessageIds, readMessages, sendMessage, type MessageEvent } from './messages.js';
 import {
   evaluateAlerts,
   changeAlertSettings,
@@ -190,6 +190,9 @@ export class PostgresRides implements RideStore {
   }
   messages(account: VerifiedAccount, id: string, afterSequence: number, limit: number) {
     return this.manage(account, id, null, (context) => readMessages(context, afterSequence, limit));
+  }
+  messageReceipts(account: VerifiedAccount, id: string, ids: string[]) {
+    return this.manage(account, id, null, (context) => acceptedMessageIds(context, ids));
   }
   async uploadVoice(
     account: VerifiedAccount,

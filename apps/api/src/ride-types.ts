@@ -95,6 +95,11 @@ export interface RotateInvite extends Partial<MotionContext> {
 
 export interface RideStore {
   sendMessage(account: VerifiedAccount, event: MessageEvent): Promise<RideMessage>;
+  messageReceipts(
+    account: VerifiedAccount,
+    rideId: string,
+    ids: string[],
+  ): Promise<{ accepted: string[] }>;
   messages(
     account: VerifiedAccount,
     rideId: string,

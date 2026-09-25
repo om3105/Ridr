@@ -161,6 +161,27 @@ export class LocationController {
       response,
     );
   }
+  @Post('rides/:rideId/message-receipts')
+  @HttpCode(200)
+  async messageReceipts(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const actor = await this.actor(request);
+    const value = exactObject(body, ['ids']);
+    if (
+      !Array.isArray(value.ids) ||
+      value.ids.length > 50 ||
+      value.ids.some((item) => typeof item !== 'string' || !UUID.test(item))
+    )
+      throw new ApiError(400, 'INVALID_REQUEST', 'Provide up to 50 message IDs.');
+    return this.envelope(
+      await this.services!.store.messageReceipts(actor, rideId(id), value.ids),
+      response,
+    );
+  }
   @Post('rides/:rideId/media/voice')
   @UseInterceptors(
     FileInterceptor('voice', {

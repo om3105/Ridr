@@ -386,3 +386,12 @@ export async function readMessages(
     items = rows.map(projection);
   return { items, nextSequence: result.rows.length > limit ? items.at(-1)!.sequence : null };
 }
+
+export async function acceptedMessageIds(context: ManagementContext, ids: string[]) {
+  const result = await context.client.query<{ id: string }>(
+    `SELECT id FROM ridr.messages
+     WHERE ride_id=$1 AND sender_member_id=$2 AND id = ANY($3::uuid[])`,
+    [context.ride.id, context.own.id, ids],
+  );
+  return { accepted: result.rows.map((row) => row.id) };
+}

@@ -151,6 +151,7 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
       throw new Error('Unused');
     },
     messages: async () => ({ items: [], nextSequence: null }),
+    messageReceipts: async () => ({ accepted: [] }),
     uploadVoice: async () => {
       throw new Error('Unused');
     },
@@ -312,6 +313,21 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
   };
   const post = (path: string, body: unknown) =>
     fetch(url + '/v1' + path, { method: 'POST', headers, body: JSON.stringify(body) });
+  await t.test('message receipt HTTP accepts only a bounded list of UUIDs', async () => {
+    const path = `/rides/${ride.id}/message-receipts`;
+    assert.equal((await post(path, { ids: [randomUUID()] })).status, 200);
+    assert.equal((await post(path, { ids: ['bad'] })).status, 400);
+    assert.equal((await post(path, { ids: Array.from({ length: 51 }, () => randomUUID()) })).status, 400);
+    assert.equal((await post(path, { ids: [], actorId: account.id })).status, 400);
+    assert.equal(
+      (await fetch(url + '/v1' + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [] }),
+      })).status,
+      401,
+    );
+  });
   await t.test('trail HTTP validates identities and bounded query shape', async () => {
     const path = `${url}/v1/rides/${ride.id}/members/${membership.id}/trail`;
     assert.equal((await fetch(path)).status, 401);

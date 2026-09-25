@@ -104,6 +104,25 @@ export async function getMessages(options: RideClientOptions, rideId: string, af
     },
   });
 }
+export function getMessageReceipts(options: RideClientOptions, rideId: string, ids: string[]) {
+  if (!uuid(rideId) || ids.length > 50 || ids.some((id) => !uuid(id)))
+    throw new Error('Invalid pending message IDs.');
+  return request(options, {
+    path: `/v1/rides/${rideId}/message-receipts`,
+    method: 'POST',
+    body: { ids },
+    parse: (value) => {
+      const accepted = (value as { accepted?: unknown } | null)?.accepted;
+      if (
+        !Array.isArray(accepted) ||
+        accepted.some((id) => !uuid(id) || !ids.includes(id)) ||
+        new Set(accepted).size !== accepted.length
+      )
+        throw new Error('Invalid message receipt response.');
+      return accepted as string[];
+    },
+  });
+}
 export function sendMessage(options: RideClientOptions, draft: Draft) {
   return request(options, {
     path: `/v1/rides/${draft.rideId}/events`,

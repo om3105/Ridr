@@ -1218,6 +1218,82 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       await assert.rejects(enable(), rejectsCode('NOT_FOUND'));
     },
   );
+  await t.test('three members reconcile delayed position and chat without duplicates', async () => {
+    const leader = account();
+    const riderA = account();
+    const riderB = account();
+    const created = await create(leader);
+    const id = created.ride.id;
+    const a = await join(riderA, created);
+    const b = await join(riderB, created);
+    await rides.start(leader, id, await startChange(leader, id));
+    const deviceA = randomUUID();
+    const deviceB = randomUUID();
+    await rides.registerDevice(riderA, deviceA, 'android');
+    await rides.registerDevice(riderB, deviceB, 'android');
+    const consentA = await rides.enableSharing(riderA, id, {
+      ...command(),
+      revision: (await rides.management(riderA, id)).membership.revision,
+    });
+    const consentB = await rides.enableSharing(riderB, id, {
+      ...command(),
+      revision: (await rides.management(riderB, id)).membership.revision,
+    });
+    const sample = (epoch: number, capturedAt: string, lat: number) =>
+      parseSample({
+        v: 1,
+        type: 'location.sample',
+        id: randomUUID(),
+        rideId: id,
+        capturedAt,
+        payload: {
+          consentEpoch: epoch,
+          position: { lat, lon: 73.85, accuracyM: 12, recordedAt: capturedAt },
+          speedKph: 0,
+          headingDegrees: null,
+          batteryPercent: null,
+        },
+      });
+    const olderAt = new Date().toISOString();
+    await pool.query('SELECT pg_sleep(0.01)');
+    const newerAt = new Date().toISOString();
+    const oldA = sample(consentA.consentEpoch, olderAt, 18.51);
+    const newA = sample(consentA.consentEpoch, newerAt, 18.52);
+    const liveB = sample(consentB.consentEpoch, newerAt, 18.53);
+    await rides.sample(riderA, deviceA, newA);
+    await rides.sample(riderB, deviceB, liveB);
+    assert.equal((await rides.sample(riderA, deviceA, oldA, true)).status, 'accepted');
+    assert.equal((await rides.sample(riderA, deviceA, oldA, true)).status, 'duplicate');
+    const positions = (await rides.locations(leader, id)).items;
+    assert.equal(positions.find((item) => item.memberId === a.membership.id)?.sampleId, newA.id);
+    assert.equal(positions.find((item) => item.memberId === b.membership.id)?.sampleId, liveB.id);
+    const presetA = parseMessage({
+      v: 1,
+      type: 'message.preset',
+      id: randomUUID(),
+      rideId: id,
+      capturedAt: new Date().toISOString(),
+      payload: { preset: 'stopping' },
+    });
+    const presetB = parseMessage({
+      v: 1,
+      type: 'message.preset',
+      id: randomUUID(),
+      rideId: id,
+      capturedAt: new Date().toISOString(),
+      payload: { preset: 'regrouping' },
+    });
+    const first = await rides.sendMessage(riderA, presetA);
+    const second = await rides.sendMessage(riderB, presetB);
+    assert.equal((await rides.sendMessage(riderA, presetA)).sequence, first.sequence);
+    assert.deepEqual(
+      (await rides.messages(leader, id, 0, 10)).items.map((item) => item.id),
+      [first.id, second.id],
+    );
+    assert.deepEqual(await rides.messageReceipts(riderA, id, [first.id, second.id]), {
+      accepted: [first.id],
+    });
+  });
   await t.test(
     'warning state survives retries and restarts, with member and device privacy',
     async () => {
@@ -1394,6 +1470,15 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       const text = event('message.text', 'Meet at the next stop');
       const first = await rides.sendMessage(member, text);
       assert.equal((await rides.sendMessage(member, text)).id, first.id);
+      assert.deepEqual(
+        await rides.messageReceipts(member, id, [text.id, randomUUID()]),
+        { accepted: [text.id] },
+      );
+      assert.deepEqual(await rides.messageReceipts(leader, id, [text.id]), { accepted: [] });
+      await assert.rejects(
+        rides.messageReceipts(outsider, id, [text.id]),
+        rejectsCode('NOT_FOUND'),
+      );
       await assert.rejects(
         rides.sendMessage(member, { ...text, payload: { ...text.payload, text: 'Changed' } }),
         rejectsCode('IDEMPOTENCY_CONFLICT'),
@@ -1430,6 +1515,9 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       );
       await rides.leave(member, id, stop(0));
       await assert.rejects(rides.messages(member, id, 0, 10), rejectsCode('NOT_FOUND'));
+      assert.deepEqual(await rides.messageReceipts(member, id, [text.id]), {
+        accepted: [text.id],
+      });
       await rides.end(leader, id, {
         ...command(),
         reason: 'completed',
@@ -1440,6 +1528,12 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
         rides.sendMessage(leader, event('message.text', 'Too late')),
         rejectsCode('NOT_FOUND'),
       );
+      assert.deepEqual(await rides.messageReceipts(leader, id, [pinned.id, text.id]), {
+        accepted: [pinned.id],
+      });
+      assert.deepEqual(await rides.messageReceipts(member, id, [text.id, randomUUID()]), {
+        accepted: [text.id],
+      });
     },
   );
   await t.test('voice upload is private, idempotent, and bound to its active sender', async () => {
