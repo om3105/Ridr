@@ -1797,4 +1797,132 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       );
     },
   );
+
+  await t.test('pillion readiness gates start and fresh scans support late pairs', async () => {
+    const leader = account();
+    const pillion = account();
+    const outsider = account();
+    const created = await create(leader);
+    const joined = await join(pillion, created, 'pillion');
+    const id = created.ride.id;
+    const invitation = await rides.issuePairInvitation(leader, id, motion());
+    const paired = await rides.pair(pillion, id, {
+      pairInvitationId: invitation.pairInvitationId,
+      token: invitation.token,
+      consent: true,
+      ...motion(),
+      ...command(),
+    });
+    assert.ok(Date.parse(paired.readinessScanExpiresAt) > Date.now());
+    assert.equal((await rides.readiness(leader, id)).leaderPairs?.[0]?.ready, false);
+    assert.equal((await rides.readiness(pillion, id)).leaderPairs, null);
+    await assert.rejects(rides.readiness(outsider, id), rejectsCode('NOT_FOUND'));
+    await assert.rejects(
+      rides.start(leader, id, await startChange(leader, id)),
+      rejectsCode('PAIR_NOT_READY'),
+    );
+    await assert.rejects(
+      rides.attestReadiness(leader, id, paired.pair.id, {
+        revision: 1,
+        helmetConfirmed: true,
+        ready: true,
+        scanReceiptId: paired.readinessScanReceiptId,
+        ...motion(),
+        ...command(),
+      }),
+      rejectsCode('READINESS_CONFLICT'),
+    );
+    const first = await rides.attestReadiness(pillion, id, paired.pair.id, {
+      revision: 1,
+      helmetConfirmed: true,
+      ready: true,
+      scanReceiptId: paired.readinessScanReceiptId,
+      ...motion(),
+      ...command(),
+    });
+    assert.equal(first.memberId, joined.membership.id);
+    assert.equal((await rides.readiness(leader, id)).leaderPairs?.[0]?.ready, true);
+    assert.equal((await rides.start(leader, id, await startChange(leader, id))).state, 'active');
+
+    const lateRider = account();
+    const latePillion = account();
+    const riderJoin = await join(lateRider, created, 'rider');
+    const pillionJoin = await join(latePillion, created, 'pillion');
+    const lateInvitation = await rides.issuePairInvitation(latePillion, id, motion());
+    const latePair = await rides.pair(lateRider, id, {
+      pairInvitationId: lateInvitation.pairInvitationId,
+      token: lateInvitation.token,
+      consent: true,
+      ...motion(),
+      ...command(),
+    });
+    assert.equal(
+      (await rides.readiness(leader, id)).leaderPairs?.find((pair) => pair.id === latePair.pair.id)
+        ?.ready,
+      false,
+    );
+    const oldChallenge = await rides.issueReadinessScan(lateRider, id, latePair.pair.id, {
+      roundId: null,
+      ...motion(),
+    });
+    const challenge = await rides.issueReadinessScan(lateRider, id, latePair.pair.id, {
+      roundId: null,
+      ...motion(),
+    });
+    await assert.rejects(
+      rides.acceptReadinessScan(latePillion, id, latePair.pair.id, {
+        challengeId: oldChallenge.challengeId,
+        scannedToken: oldChallenge.token,
+        ...motion(),
+        ...command(),
+      }),
+      rejectsCode('READINESS_CONFLICT'),
+    );
+    const scanChange = {
+      challengeId: challenge.challengeId,
+      scannedToken: challenge.token,
+      ...motion(),
+      ...command(),
+    };
+    const receipt = await rides.acceptReadinessScan(latePillion, id, latePair.pair.id, scanChange);
+    assert.deepEqual(
+      await rides.acceptReadinessScan(latePillion, id, latePair.pair.id, scanChange),
+      receipt,
+    );
+    await assert.rejects(
+      rides.acceptReadinessScan(latePillion, id, latePair.pair.id, {
+        ...scanChange,
+        idempotencyKey: randomUUID(),
+      }),
+      rejectsCode('READINESS_CONFLICT'),
+    );
+    await assert.rejects(
+      rides.attestReadiness(lateRider, id, latePair.pair.id, {
+        revision: 1,
+        helmetConfirmed: true,
+        ready: true,
+        scanReceiptId: receipt.scanReceiptId,
+        ...motion(),
+        ...command(),
+      }),
+      rejectsCode('READINESS_CONFLICT'),
+    );
+    const attested = await rides.attestReadiness(latePillion, id, latePair.pair.id, {
+      revision: 1,
+      helmetConfirmed: true,
+      ready: true,
+      scanReceiptId: receipt.scanReceiptId,
+      ...motion(),
+      ...command(),
+    });
+    assert.equal(attested.memberId, pillionJoin.membership.id);
+    assert.equal(latePair.pair.riderMemberId, riderJoin.membership.id);
+    assert.equal(
+      (await rides.readiness(leader, id)).leaderPairs?.filter((pair) => pair.ready).length,
+      2,
+    );
+    await rides.unpair(lateRider, id, latePair.pair.id, { ...motion(), ...command() });
+    assert.equal((await rides.readiness(leader, id)).leaderPairs?.length, 1);
+    assert.equal((await rides.readiness(latePillion, id)).ownPair, null);
+  });
 });

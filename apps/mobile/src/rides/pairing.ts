@@ -12,6 +12,7 @@ export type PairPreview = {
 export type PairResult = {
   pair: { id: string; riderMemberId: string; pillionMemberId: string; createdAt: string };
   readinessScanReceiptId: string;
+  readinessScanExpiresAt: string;
 };
 
 function object(value: unknown): Record<string, unknown> {
@@ -53,7 +54,8 @@ function parsePair(value: unknown): PairResult {
     !uuid.test(String(pair.riderMemberId)) ||
     !uuid.test(String(pair.pillionMemberId)) ||
     !date(pair.createdAt) ||
-    !uuid.test(String(data.readinessScanReceiptId))
+    !uuid.test(String(data.readinessScanReceiptId)) ||
+    !date(data.readinessScanExpiresAt)
   )
     throw new RideError('invalid', 'The pairing receipt is invalid.');
   return data as PairResult;

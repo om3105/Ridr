@@ -162,9 +162,9 @@ export async function accept(
   // This receipt proves the scanner saw the pair QR; Day 17 still requires the pillion's own attestation.
   const challengeId = randomUUID();
   const readinessScanReceiptId = randomUUID();
-  await context.client.query(
+  const challenge = await context.client.query<{ expires_at: Date }>(
     `INSERT INTO ridr.scan_challenges (id,ride_id,pair_id,issued_by_member_id,token_hash,expires_at,consumed_at)
-     VALUES ($1,$2,$3,$4,$5,now()+interval '5 minutes',clock_timestamp())`,
+     VALUES ($1,$2,$3,$4,$5,now()+interval '5 minutes',clock_timestamp()) RETURNING expires_at`,
     [challengeId, context.ride.id, pairId, issuer.id, hash(change.token)],
   );
   await context.client.query(
@@ -180,6 +180,7 @@ export async function accept(
       createdAt: pair.rows[0]!.created_at.toISOString(),
     },
     readinessScanReceiptId,
+    readinessScanExpiresAt: challenge.rows[0]!.expires_at.toISOString(),
   };
 }
 

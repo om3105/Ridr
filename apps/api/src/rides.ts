@@ -256,6 +256,93 @@ function envelope<T>(data: T, response: Response, revision?: number) {
 export class RideController {
   constructor(@Inject(RIDES) private readonly services: RideServices | null) {}
 
+  @Get('rides/:rideId/readiness')
+  async readiness(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    return envelope(await this.services!.store.readiness(account, rideId(id)), response);
+  }
+
+  @Post('rides/:rideId/pairs/:pairId/scan-challenges')
+  async issueReadinessScan(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('pairId') pairId: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response, true);
+    json(request.headers['content-type']);
+    const value = object(body);
+    exact(value, ['roundId', 'motion', 'capturedAt']);
+    if (value.roundId !== null)
+      throw new ApiError(400, 'INVALID_REQUEST', 'Readiness scans have no rest-stop round.');
+    return envelope(
+      await this.services!.store.issueReadinessScan(account, rideId(id), rideId(pairId), {
+        ...parseMotion(value),
+        roundId: null,
+      }),
+      response,
+    );
+  }
+
+  @Post('rides/:rideId/pairs/:pairId/scan-receipts')
+  async acceptReadinessScan(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('pairId') pairId: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response, true);
+    json(request.headers['content-type']);
+    const value = object(body);
+    exact(value, ['challengeId', 'scannedToken', 'motion', 'capturedAt']);
+    return envelope(
+      await this.services!.store.acceptReadinessScan(account, rideId(id), rideId(pairId), {
+        ...parseMotion(value),
+        challengeId: rideId(String(value.challengeId)),
+        scannedToken: pairToken(value.scannedToken),
+        idempotencyKey: commandKey(request.header('idempotency-key')),
+      }),
+      response,
+    );
+  }
+
+  @Put('rides/:rideId/pairs/:pairId/readiness/me')
+  async attestReadiness(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('pairId') pairId: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response, true);
+    json(request.headers['content-type']);
+    const value = object(body);
+    exact(value, ['helmetConfirmed', 'ready', 'scanReceiptId', 'motion', 'capturedAt']);
+    if (value.helmetConfirmed !== true || value.ready !== true)
+      throw new ApiError(
+        400,
+        'INVALID_REQUEST',
+        'Only your own explicit helmet and readiness confirmation is accepted.',
+      );
+    return envelope(
+      await this.services!.store.attestReadiness(account, rideId(id), rideId(pairId), {
+        ...parseMotion(value),
+        helmetConfirmed: true,
+        ready: true,
+        scanReceiptId: rideId(String(value.scanReceiptId)),
+        revision: rideRevision(request.header('if-match')),
+        idempotencyKey: commandKey(request.header('idempotency-key')),
+      }),
+      response,
+    );
+  }
+
   @Get('rides/:rideId/pairs/me')
   async currentPair(
     @Req() request: Request,

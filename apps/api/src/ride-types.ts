@@ -94,6 +94,26 @@ export interface RotateInvite extends Partial<MotionContext> {
 }
 
 export interface RideStore {
+  readiness(account: VerifiedAccount, rideId: string): Promise<ReadinessOverview>;
+  issueReadinessScan(
+    account: VerifiedAccount,
+    rideId: string,
+    pairId: string,
+    change: MotionContext & { roundId: null },
+  ): Promise<ScanChallenge>;
+  acceptReadinessScan(
+    account: VerifiedAccount,
+    rideId: string,
+    pairId: string,
+    change: MotionContext & Command & { challengeId: string; scannedToken: string },
+  ): Promise<ScanReceipt>;
+  attestReadiness(
+    account: VerifiedAccount,
+    rideId: string,
+    pairId: string,
+    change: MotionContext &
+      Command & { revision: number; helmetConfirmed: true; ready: true; scanReceiptId: string },
+  ): Promise<ReadinessAttestation>;
   currentPair(
     account: VerifiedAccount,
     rideId: string,
@@ -241,6 +261,37 @@ export interface PairPreview {
 export interface PairResult {
   pair: { id: string; riderMemberId: string; pillionMemberId: string; createdAt: string };
   readinessScanReceiptId: string;
+  readinessScanExpiresAt: string;
+}
+export interface PairReadiness {
+  id: string;
+  revision: number;
+  rider: { memberId: string; displayName: string };
+  pillion: { memberId: string; displayName: string };
+  ready: boolean;
+  confirmedAt: string | null;
+}
+export interface ReadinessOverview {
+  ownMemberId: string;
+  ownPair: PairReadiness | null;
+  leaderPairs: PairReadiness[] | null;
+}
+export interface ScanChallenge {
+  challengeId: string;
+  token: string;
+  expiresAt: string;
+}
+export interface ScanReceipt {
+  scanReceiptId: string;
+  pairId: string;
+  expiresAt: string;
+}
+export interface ReadinessAttestation {
+  pairId: string;
+  memberId: string;
+  helmetConfirmed: true;
+  ready: true;
+  confirmedAt: string;
 }
 export interface MotionContext {
   motion: {

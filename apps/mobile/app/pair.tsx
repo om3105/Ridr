@@ -10,7 +10,6 @@ import { checkStationary } from '../src/rides/motion-check';
 import type { MotionContext } from '../src/rides/models';
 import {
   acceptPair,
-  currentPair,
   issuePairInvitation,
   pairQr,
   parsePairQr,
@@ -19,6 +18,8 @@ import {
   type PairInvitation,
   type PairPreview,
 } from '../src/rides/pairing';
+import { getReadiness, type ReadinessOverview, type ScanReceipt } from '../src/rides/readiness';
+import { ReadinessPanel } from '../src/rides/ReadinessPanel';
 import { RideAccess, useRides } from '../src/rides/provider';
 
 export default function PairScreen() {
@@ -34,16 +35,33 @@ function PairFlow({ id }: { id: string }) {
   const { run } = useRides();
   const [invite, setInvite] = useState<PairInvitation | null>(null);
   const [scanned, setScanned] = useState<{ token: string; preview: PairPreview } | null>(null);
-  const [current, setCurrent] = useState<{ id: string; name: string } | null>(null);
+  const [overview, setOverview] = useState<ReadinessOverview | null>(null);
   const [statusKnown, setStatusKnown] = useState(false);
+  const [initialReceipt, setInitialReceipt] = useState<ScanReceipt | null>(null);
+  const knownPairId = useRef<string | null>(null);
   const pairAttempt = useRef<{ token: string; motion: MotionContext; key: string } | null>(null);
   const unpairAttempt = useRef<{ pairId: string; motion: MotionContext; key: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const pair = overview?.ownPair;
+  const current = pair
+    ? {
+        id: pair.id,
+        name:
+          pair.rider.memberId === overview?.ownMemberId
+            ? pair.pillion.displayName
+            : pair.rider.displayName,
+      }
+    : null;
   const refresh = useCallback(async () => {
-    const pair = await run((options) => currentPair(options, id));
-    setCurrent(pair ? { id: pair.id, name: pair.partnerName } : null);
-    if (pair) {
+    const status = await run((options) => getReadiness(options, id));
+    const latestPair = status.ownPair;
+    if (latestPair?.id !== knownPairId.current) {
+      knownPairId.current = latestPair?.id ?? null;
+      setInitialReceipt(null);
+    }
+    setOverview(status);
+    if (latestPair) {
       pairAttempt.current = null;
       setInvite(null);
       setScanned(null);
@@ -96,6 +114,16 @@ function PairFlow({ id }: { id: string }) {
       ) : current ? (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Paired with {current.name}</Text>
+          {pair && overview && (
+            <ReadinessPanel
+              key={pair.id}
+              rideId={id}
+              pair={pair}
+              ownMemberId={overview.ownMemberId}
+              initialReceipt={initialReceipt}
+              onUpdated={refresh}
+            />
+          )}
           <Button
             label="Check speed and unpair"
             secondary
@@ -196,8 +224,9 @@ function PairFlow({ id }: { id: string }) {
                             key: randomUUID(),
                           };
                     pairAttempt.current = attempt;
+                    let result;
                     try {
-                      await run((options) =>
+                      result = await run((options) =>
                         acceptPair(
                           options,
                           id,
@@ -215,6 +244,12 @@ function PairFlow({ id }: { id: string }) {
                     pairAttempt.current = null;
                     setScanned(null);
                     await refresh();
+                    if (result.pair.pillionMemberId === overview?.ownMemberId)
+                      setInitialReceipt({
+                        scanReceiptId: result.readinessScanReceiptId,
+                        pairId: result.pair.id,
+                        expiresAt: result.readinessScanExpiresAt,
+                      });
                     setMessage('Pairing confirmed.');
                   })
                 }
@@ -228,6 +263,24 @@ function PairFlow({ id }: { id: string }) {
             </View>
           )}
         </>
+      )}
+      {overview?.leaderPairs && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Pair check-ins</Text>
+          {overview.leaderPairs.length === 0 && (
+            <Text style={styles.detail}>
+              No pairs yet. Solo riders do not need a pillion check-in.
+            </Text>
+          )}
+          {overview.leaderPairs.map((item) => (
+            <Text key={item.id} style={styles.detail}>
+              {item.rider.displayName} + {item.pillion.displayName}:{' '}
+              {item.ready
+                ? `Ready · ${new Date(item.confirmedAt!).toLocaleTimeString()}`
+                : 'Pending pillion confirmation'}
+            </Text>
+          ))}
+        </View>
       )}
     </Page>
   );

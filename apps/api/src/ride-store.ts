@@ -29,6 +29,7 @@ import {
 } from './route-planning.js';
 import * as lifecycle from './ride-management.js';
 import * as pairing from './ride-pairing.js';
+import * as readiness from './ride-readiness.js';
 import {
   integer,
   rideProjection,
@@ -72,6 +73,10 @@ import type {
   PairInvitation,
   PairPreview,
   PairResult,
+  ReadinessOverview,
+  ScanChallenge,
+  ScanReceipt,
+  ReadinessAttestation,
 } from './ride-types.js';
 
 interface Receipt<T> {
@@ -867,6 +872,59 @@ export class PostgresRides implements RideStore {
   }
   management(account: VerifiedAccount, id: string): Promise<RideManagement> {
     return this.manage(account, id, null, lifecycle.management);
+  }
+  readiness(account: VerifiedAccount, id: string): Promise<ReadinessOverview> {
+    return this.manage(account, id, null, readiness.overview);
+  }
+  issueReadinessScan(
+    account: VerifiedAccount,
+    id: string,
+    pairId: string,
+    change: MotionContext & { roundId: null },
+  ): Promise<ScanChallenge> {
+    return this.manage(account, id, null, (context) =>
+      readiness.issueScan(context, pairId, change),
+    );
+  }
+  acceptReadinessScan(
+    account: VerifiedAccount,
+    id: string,
+    pairId: string,
+    change: MotionContext & Command & { challengeId: string; scannedToken: string },
+  ): Promise<ScanReceipt> {
+    const { idempotencyKey, ...body } = change;
+    return this.manage(
+      account,
+      id,
+      {
+        method: 'POST',
+        path: `/v1/rides/${id}/pairs/${pairId}/scan-receipts`,
+        key: idempotencyKey,
+        body,
+        status: 201,
+      },
+      (context) => readiness.acceptScan(context, pairId, change),
+    );
+  }
+  attestReadiness(
+    account: VerifiedAccount,
+    id: string,
+    pairId: string,
+    change: MotionContext &
+      Command & { revision: number; helmetConfirmed: true; ready: true; scanReceiptId: string },
+  ): Promise<ReadinessAttestation> {
+    const { idempotencyKey, ...body } = change;
+    return this.manage(
+      account,
+      id,
+      {
+        method: 'PUT',
+        path: `/v1/rides/${id}/pairs/${pairId}/readiness/me`,
+        key: idempotencyKey,
+        body,
+      },
+      (context) => readiness.attest(context, pairId, change),
+    );
   }
   issuePairInvitation(
     account: VerifiedAccount,

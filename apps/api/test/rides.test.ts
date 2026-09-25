@@ -147,6 +147,24 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
   let revoked = false;
   const logs: string[] = [];
   const store: RideStore = {
+    readiness: async () => ({ ownMemberId: membership.id, ownPair: null, leaderPairs: [] }),
+    issueReadinessScan: async () => ({
+      challengeId: randomUUID(),
+      token: 'A'.repeat(43),
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+    }),
+    acceptReadinessScan: async (_account, _id, pairId) => ({
+      scanReceiptId: randomUUID(),
+      pairId,
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+    }),
+    attestReadiness: async (_account, _id, pairId) => ({
+      pairId,
+      memberId: membership.id,
+      helmetConfirmed: true,
+      ready: true,
+      confirmedAt: new Date().toISOString(),
+    }),
     currentPair: async () => ({ pair: null }),
     issuePairInvitation: async () => ({
       pairInvitationId: membership.id,
@@ -170,6 +188,7 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
         createdAt: new Date().toISOString(),
       },
       readinessScanReceiptId: randomUUID(),
+      readinessScanExpiresAt: new Date(Date.now() + 60000).toISOString(),
     }),
     unpair: async () => undefined,
     sendMessage: async () => {
@@ -338,6 +357,57 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
   };
   const post = (path: string, body: unknown) =>
     fetch(url + '/v1' + path, { method: 'POST', headers, body: JSON.stringify(body) });
+  await t.test('readiness HTTP rejects malformed scans and unsigned attestations', async () => {
+    const base = `/rides/${ride.id}`;
+    const pairId = randomUUID();
+    const context = {
+      motion: { state: 'stopped', source: 'speed', observedAt: new Date().toISOString() },
+      capturedAt: new Date().toISOString(),
+    };
+    const status = await fetch(`${url}/v1${base}/readiness`, { headers });
+    assert.equal(status.status, 200);
+    assert.equal((await status.json()).data.ownPair, null);
+    assert.equal(
+      (await post(`${base}/pairs/${pairId}/scan-challenges`, { ...context, roundId: null })).status,
+      201,
+    );
+    assert.equal(
+      (await post(`${base}/pairs/${pairId}/scan-challenges`, { ...context, roundId: randomUUID() }))
+        .status,
+      400,
+    );
+    assert.equal(
+      (
+        await post(`${base}/pairs/${pairId}/scan-receipts`, {
+          ...context,
+          challengeId: randomUUID(),
+          scannedToken: 'bad',
+        })
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await post(`${base}/pairs/${pairId}/scan-receipts`, {
+          ...context,
+          challengeId: randomUUID(),
+          scannedToken: 'A'.repeat(43),
+        })
+      ).status,
+      201,
+    );
+    const attest = (body: unknown, requestHeaders = headers) =>
+      fetch(`${url}/v1${base}/pairs/${pairId}/readiness/me`, {
+        method: 'PUT',
+        headers: requestHeaders,
+        body: JSON.stringify(body),
+      });
+    const body = { ...context, helmetConfirmed: true, ready: true, scanReceiptId: randomUUID() };
+    assert.equal((await attest({ ...body, helmetConfirmed: false })).status, 400);
+    assert.equal((await attest(body, { ...headers, 'If-Match': '1' })).status, 400);
+    assert.equal((await attest(body)).status, 200);
+    assert.equal((await fetch(`${url}/v1${base}/readiness`)).status, 401);
+  });
   await t.test('pair HTTP requires an exact QR and explicit consent', async () => {
     const base = `/rides/${ride.id}`;
     const context = {

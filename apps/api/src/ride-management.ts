@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { pairStatuses } from './ride-readiness.js';
 import type { PoolClient } from 'pg';
 import { ApiError } from './api-errors.js';
 import {
@@ -200,35 +201,15 @@ export async function startRide(context: ManagementContext, change: StartRide): 
     'SELECT id FROM ridr.pairs WHERE ride_id = $1 AND ended_at IS NULL ORDER BY id FOR UPDATE',
     [ride.id],
   );
-  const unready = await client.query<{ id: string }>(
-    `SELECT p.id FROM ridr.pairs p
-     LEFT JOIN ridr.memberships rider ON rider.id = p.rider_member_id
-     LEFT JOIN ridr.memberships pillion ON pillion.id = p.pillion_member_id
-     LEFT JOIN ridr.readiness ready ON ready.pair_id = p.id AND ready.invalidated_at IS NULL
-     LEFT JOIN ridr.scan_receipts receipt ON receipt.id = ready.scan_receipt_id
-     LEFT JOIN ridr.scan_challenges challenge ON challenge.id = receipt.challenge_id
-     WHERE p.ride_id = $1 AND p.ended_at IS NULL AND (
-       $2 <> 'motorcycle' OR rider.left_at IS NOT NULL OR pillion.left_at IS NOT NULL OR
-       rider.physical_role <> 'rider' OR pillion.physical_role <> 'pillion' OR
-       ready.pair_id IS NULL OR ready.attesting_member_id <> p.pillion_member_id OR
-       NOT ready.helmet_attested OR NOT ready.ready_attested OR
-       receipt.id IS NULL OR receipt.ride_id <> p.ride_id OR challenge.pair_id <> p.id OR
-       challenge.ride_id <> p.ride_id OR challenge.issued_by_member_id NOT IN (p.rider_member_id, p.pillion_member_id) OR
-       receipt.scanned_by_member_id NOT IN (p.rider_member_id, p.pillion_member_id) OR
-       receipt.scanned_by_member_id = challenge.issued_by_member_id OR receipt.accepted_at < challenge.created_at OR
-       challenge.round_id IS NOT NULL OR challenge.consumed_at IS NULL OR
-       receipt.accepted_at < p.created_at OR receipt.accepted_at >= challenge.expires_at OR
-       ready.confirmed_at < receipt.accepted_at OR ready.confirmed_at > clock_timestamp() OR
-       (SELECT count(*) FROM ridr.active_pair_members ap WHERE ap.pair_id = p.id
-        AND ap.membership_id IN (p.rider_member_id, p.pillion_member_id)) <> 2)`,
-    [ride.id, ride.transport],
-  );
-  if (unready.rowCount)
+  const unready = (await pairStatuses(context))
+    .filter((pair) => !pair.ready)
+    .map((pair) => pair.id);
+  if (unready.length)
     throw new ApiError(
       409,
       'PAIR_NOT_READY',
       'Every current pair must complete readiness before start.',
-      { pairIds: unready.rows.map((pair) => pair.id).join(',') },
+      { pairIds: unready.join(',') },
     );
   await client.query(
     `INSERT INTO ridr.active_memberships (user_id, membership_id, ride_id)
