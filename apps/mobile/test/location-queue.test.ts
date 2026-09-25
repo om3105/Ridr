@@ -142,6 +142,29 @@ test('ten-minute outage and restart stop first, then replay history without live
   assert.equal(restored.queue.status().sharing, false);
   assert.equal(restored.queue.state.samples.length, 0);
   assert.ok(restored.calls.indexOf('stop') < restored.calls.indexOf('history'));
+  assert.ok(restored.calls.indexOf('current') < restored.calls.indexOf('history'));
+  assert.ok(!restored.calls.includes('live'));
+});
+test('saved history remains queued when authoritative state cannot be checked', async () => {
+  const f = fixture();
+  await f.start();
+  await f.fix();
+  const restored = fixture(f.saved());
+  await restored.queue.recover();
+  restored.deps.current = async () => {
+    restored.calls.push('current');
+    throw new Error('still offline');
+  };
+  await assert.rejects(restored.queue.flush());
+  assert.equal(restored.queue.state.samples.length, 1);
+  assert.ok(!restored.calls.includes('history'));
+  restored.deps.current = async () => {
+    restored.calls.push('current');
+    return { active: false, sharing: false, epoch: 2 };
+  };
+  await restored.queue.flush();
+  assert.equal(restored.queue.state.samples.length, 0);
+  assert.ok(restored.calls.indexOf('current') < restored.calls.indexOf('history'));
   assert.ok(!restored.calls.includes('live'));
 });
 test('old backlog cannot be broadcast as current and expired samples are bounded', async () => {

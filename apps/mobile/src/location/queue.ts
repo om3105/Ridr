@@ -261,15 +261,19 @@ export class LocationQueue {
       }
       if (privacyOnly) return;
       const consent = this.state.consent;
-      if (consent) {
+      const queuedRideId = consent?.rideId ?? this.state.samples[0]?.rideId;
+      if (queuedRideId) {
         let current;
         try {
-          current = await this.deps.current(consent.rideId);
+          current = await this.deps.current(queuedRideId);
         } catch (error) {
-          if (this.deps.permanent(error)) await this.stop();
+          if (consent && this.deps.permanent(error)) await this.stop();
           throw error;
         }
-        if (!current.active || !current.sharing || current.epoch !== consent.epoch) {
+        if (
+          consent &&
+          (!current.active || !current.sharing || current.epoch !== consent.epoch)
+        ) {
           await this.stop();
           return;
         }
