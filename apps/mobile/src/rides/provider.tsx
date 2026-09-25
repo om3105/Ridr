@@ -15,7 +15,7 @@ import { Notice, Page, styles } from '../auth/components';
 import { apiUrl } from '../connection';
 import type { RideClientOptions } from './api';
 import { RideError } from './api';
-import type { RideInvitation } from './models';
+import type { RideInvitation, RideMembership } from './models';
 import { rideSessionGeneration } from './private-session';
 import type { SafetyAction } from './safety-action';
 
@@ -23,6 +23,8 @@ type RideContextValue = {
   run<T>(request: (options: RideClientOptions) => Promise<T>): Promise<T>;
   invitations: Record<string, RideInvitation>;
   rememberInvitation(rideId: string, invitation: RideInvitation | null): void;
+  recentRides: Record<string, RideMembership>;
+  rememberRide(ride: RideMembership | null, rideId?: string): void;
   safetyActions: Record<string, SafetyAction>;
   rememberSafetyAction(rideId: string, action: SafetyAction | null): void;
 };
@@ -71,6 +73,17 @@ function AccountRideProvider({ children }: { children: ReactNode }) {
   }, []);
   current.current = auth;
   const [invitations, setInvitations] = useState<Record<string, RideInvitation>>({});
+  const [recentRides, setRecentRides] = useState<Record<string, RideMembership>>({});
+  const rememberRide = useCallback((ride: RideMembership | null, rideId?: string) => {
+    const id = ride?.ride.id ?? rideId;
+    if (!id) return;
+    setRecentRides((existing) => {
+      const next = { ...existing };
+      if (ride && ride.ride.state === 'active' && !ride.membership.leftAt) next[id] = ride;
+      else delete next[id];
+      return next;
+    });
+  }, []);
   const [safetyActions, setSafetyActions] = useState<Record<string, SafetyAction>>({});
   const rememberSafetyAction = useCallback((rideId: string, action: SafetyAction | null) => {
     setSafetyActions((existing) => {
@@ -123,7 +136,15 @@ function AccountRideProvider({ children }: { children: ReactNode }) {
   }, []);
   return (
     <RideContext.Provider
-      value={{ run, invitations, rememberInvitation, safetyActions, rememberSafetyAction }}
+      value={{
+        run,
+        invitations,
+        rememberInvitation,
+        recentRides,
+        rememberRide,
+        safetyActions,
+        rememberSafetyAction,
+      }}
     >
       {children}
     </RideContext.Provider>

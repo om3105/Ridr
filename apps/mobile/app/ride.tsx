@@ -85,7 +85,7 @@ function Lobby({
   showChat: boolean;
   mapFocus: { lat: number; lon: number } | null;
 }) {
-  const { run, invitations, rememberInvitation } = useRides();
+  const { run, invitations, rememberInvitation, recentRides, rememberRide } = useRides();
   const capture = useScreenTask();
   const [snapshot, setSnapshot] = useState<RideSnapshot | null>(null);
   const [management, setManagement] = useState<RideManagement | null>(null);
@@ -93,6 +93,7 @@ function Lobby({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [uncertain, setUncertain] = useState(false);
+  const [offline, setOffline] = useState(false);
   const sequence = useRef(0);
   const fetching = useRef(false);
   const stoppedFor = useRef<string | null>(null);
@@ -113,6 +114,8 @@ function Lobby({
       const status = await run((options) => getRideManagement(options, id));
       if (!current() || request !== sequence.current) return;
       setManagement(status);
+      setOffline(false);
+      rememberRide(status);
       if (status.ride.state === 'ended' || status.membership.leftAt !== null) {
         setSnapshot(null);
         rememberInvitation(id, null);
@@ -132,15 +135,22 @@ function Lobby({
       if (current() && request === sequence.current) setSnapshot(result);
     } catch (error) {
       if (current() && request === sequence.current) {
-        setSnapshot(null);
-        rememberInvitation(id, null);
+        if (error instanceof RideError && error.code === 'unavailable') {
+          setOffline(true);
+        } else {
+          setOffline(false);
+          setManagement(null);
+          setSnapshot(null);
+          rememberInvitation(id, null);
+          rememberRide(null, id);
+        }
         setMessage(error instanceof Error ? error.message : 'Your ride could not be loaded.');
       }
     } finally {
       fetching.current = false;
       if (request === sequence.current) setLoading(false);
     }
-  }, [run, capture, id, rememberInvitation]);
+  }, [run, capture, id, rememberInvitation, rememberRide]);
   useFocusEffect(
     useCallback(() => {
       void load();
@@ -249,6 +259,12 @@ function Lobby({
       ? invite?.url?.replace(/^ridr:/, 'ridr-dev:')
       : invite?.url;
   const leader = snapshot?.membership.role === 'leader';
+  const visibleRide =
+    management?.ride.state === 'active' && !management.membership.leftAt
+      ? management
+      : offline
+        ? recentRides[id]
+        : null;
   if (showChat) return <RideChat id={id} pin={chatPin} />;
   if (management && trailMember)
     return (
@@ -263,14 +279,15 @@ function Lobby({
         }
       />
     );
-  if (management?.ride.state === 'active' && !management.membership.leftAt && !showControls)
+  if (visibleRide && !showControls)
     return (
       <GroupRideMap
         id={id}
-        name={management.ride.name}
-        startedAt={management.ride.startedAt}
+        name={visibleRide.ride.name}
+        startedAt={visibleRide.ride.startedAt}
         focus={mapFocus}
-        physicalRole={management.membership.physicalRole}
+        physicalRole={visibleRide.membership.physicalRole}
+        offline={offline}
       />
     );
   return (

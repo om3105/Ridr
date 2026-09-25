@@ -15,12 +15,14 @@ export function GroupRideMap({
   startedAt,
   focus,
   physicalRole,
+  offline = false,
 }: {
   id: string;
   name: string;
   startedAt: string | null;
   focus: { lat: number; lon: number } | null;
   physicalRole: 'rider' | 'pillion';
+  offline?: boolean;
 }) {
   const live = useGroupLocations(id, startedAt);
   const group = live.snapshot ? projectGroup(live.snapshot, live.now) : null;
@@ -72,6 +74,12 @@ export function GroupRideMap({
     <Page>
       <Text style={styles.eyebrow}>GROUP MAP</Text>
       <Text style={styles.title}>{name}</Text>
+      {offline && (
+        <Notice>
+          Ride status is unconfirmed. Saved quick messages will be checked before sending when the
+          connection returns.
+        </Notice>
+      )}
       <Notice>{live.message}</Notice>
       <RideWarnings snapshot={live.snapshot} now={live.now} />
       <Text style={styles.detail}>

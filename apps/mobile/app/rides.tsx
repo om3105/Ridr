@@ -16,7 +16,7 @@ export default function RidesScreen() {
   );
 }
 function RideList() {
-  const { run } = useRides();
+  const { run, rememberRide } = useRides();
   const capture = useScreenTask();
   const [items, setItems] = useState<RideMembership[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -35,6 +35,7 @@ function RideList() {
           listRides(options, { limit: 50, ...(next ? { cursor: next } : {}) }),
         );
         if (!current() || request !== sequence.current) return;
+        for (const item of result.items) rememberRide(item);
         setItems((previous) =>
           next
             ? [
@@ -53,7 +54,7 @@ function RideList() {
         if (current() && request === sequence.current) setBusy(false);
       }
     },
-    [run, capture],
+    [run, capture, rememberRide],
   );
   useFocusEffect(
     useCallback(() => {

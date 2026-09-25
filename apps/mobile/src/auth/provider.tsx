@@ -1,4 +1,4 @@
-import { clearTracking, prepareTrackingSignOut } from '../location/tracker';
+import { clearTracking, prepareTrackingSignOut, stopTracking } from '../location/tracker';
 import { clearChatQueue } from '../chat/storage';
 import type { GoTrueClient, Session } from '@supabase/auth-js';
 import {
@@ -107,7 +107,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           issue.code === 'unauthorized' || issue.code === 'blocked' ? 'blocked' : 'unavailable',
         );
         clearRideSession();
-        await stopDiagnostics().catch(() => undefined);
+        if (issue.code === 'unavailable') {
+          // A temporary profile outage must not erase saved samples or drafts.
+          // Stop native collection until the account can be verified again.
+          await Promise.all([stopTracking(), stopAndClearDiagnostics()]).catch(() => undefined);
+        } else await stopDiagnostics().catch(() => undefined);
       }
     },
     [stopDiagnostics],
@@ -154,8 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setState(loggingOut.current ? 'blocked' : 'signed-out');
             // SDK callbacks stay synchronous; cleanup runs outside its auth operation.
             void stopDiagnostics().catch(() => undefined);
-            if (!loggingOut.current && !previousId)
-              void clearChatQueue().catch(() => undefined);
+            if (!loggingOut.current && !previousId) void clearChatQueue().catch(() => undefined);
           }
         }).data.subscription;
         const restoreEpoch = epoch.current;
