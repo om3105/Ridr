@@ -15,6 +15,7 @@ export function GroupRideMap({
   startedAt,
   focus,
   physicalRole,
+  transport,
   offline = false,
 }: {
   id: string;
@@ -22,10 +23,18 @@ export function GroupRideMap({
   startedAt: string | null;
   focus: { lat: number; lon: number } | null;
   physicalRole: 'rider' | 'pillion';
+  transport: 'motorcycle' | 'cycling' | 'car';
   offline?: boolean;
 }) {
   const live = useGroupLocations(id, startedAt);
   const group = live.snapshot ? projectGroup(live.snapshot, live.now) : null;
+  const passengerByRider = new Map(
+    live.snapshot?.pairs.map((pair) => [
+      pair.riderMemberId,
+      live.snapshot!.members.find((person) => person.id === pair.pillionMemberId)?.displayName ??
+        'pillion',
+    ]) ?? [],
+  );
   const { run } = useRides();
   const [pins, setPins] = useState<ChatMessage[]>([]);
   const [recentPresets, setRecentPresets] = useState<ChatMessage[]>([]);
@@ -158,6 +167,11 @@ export function GroupRideMap({
       <Link href={{ pathname: '/route', params: { id } }} style={styles.link}>
         View the saved route →
       </Link>
+      {transport === 'motorcycle' && (
+        <Link href={{ pathname: '/pair', params: { id } }} style={styles.link}>
+          Rider and pillion pairing →
+        </Link>
+      )}
       <Button label="Refresh group" secondary onPress={live.refresh} />
       {group?.members.map((member) => (
         <View key={member.id} style={styles.card}>
@@ -168,6 +182,11 @@ export function GroupRideMap({
           <Text style={styles.detail}>
             {member.role} · {member.state}
           </Text>
+          {passengerByRider.has(member.id) && (
+            <Text style={styles.detail}>
+              Riding with {passengerByRider.get(member.id)} · marker uses this rider's position.
+            </Text>
+          )}
           {live.snapshot?.pairs.some((pair) => pair.pillionMemberId === member.id) && (
             <Text style={styles.detail}>
               Pillion: combined marker follows the rider. This person’s own position is listed

@@ -147,6 +147,31 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
   let revoked = false;
   const logs: string[] = [];
   const store: RideStore = {
+    currentPair: async () => ({ pair: null }),
+    issuePairInvitation: async () => ({
+      pairInvitationId: membership.id,
+      token: 'A'.repeat(43),
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+    }),
+    previewPairInvitation: async () => ({
+      pairInvitationId: membership.id,
+      counterpart: {
+        memberId: membership.id,
+        displayName: membership.displayName,
+        physicalRole: 'rider',
+      },
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+    }),
+    pair: async () => ({
+      pair: {
+        id: membership.id,
+        riderMemberId: membership.id,
+        pillionMemberId: randomUUID(),
+        createdAt: new Date().toISOString(),
+      },
+      readinessScanReceiptId: randomUUID(),
+    }),
+    unpair: async () => undefined,
     sendMessage: async () => {
       throw new Error('Unused');
     },
@@ -313,18 +338,73 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
   };
   const post = (path: string, body: unknown) =>
     fetch(url + '/v1' + path, { method: 'POST', headers, body: JSON.stringify(body) });
+  await t.test('pair HTTP requires an exact QR and explicit consent', async () => {
+    const base = `/rides/${ride.id}`;
+    const context = {
+      motion: { state: 'stopped', source: 'speed', observedAt: new Date().toISOString() },
+      capturedAt: new Date().toISOString(),
+    };
+    assert.equal((await post(`${base}/pair-invitations`, context)).status, 201);
+    assert.equal(
+      (await post(`${base}/pair-invitations/preview`, { ...context, token: 'bad' })).status,
+      400,
+    );
+    assert.equal(
+      (await post(`${base}/pair-invitations/preview`, { ...context, token: 'A'.repeat(43) }))
+        .status,
+      200,
+    );
+    assert.equal(
+      (
+        await post(`${base}/pairs`, {
+          ...context,
+          pairInvitationId: membership.id,
+          token: 'A'.repeat(43),
+          consent: false,
+        })
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await post(`${base}/pairs`, {
+          ...context,
+          pairInvitationId: membership.id,
+          token: 'A'.repeat(43),
+          consent: true,
+        })
+      ).status,
+      201,
+    );
+    assert.equal((await fetch(`${url}/v1${base}/pairs/me`, { headers })).status, 200);
+    assert.equal(
+      (
+        await fetch(`${url}/v1${base}/pairs/${membership.id}`, {
+          method: 'DELETE',
+          headers,
+          body: JSON.stringify(context),
+        })
+      ).status,
+      204,
+    );
+  });
   await t.test('message receipt HTTP accepts only a bounded list of UUIDs', async () => {
     const path = `/rides/${ride.id}/message-receipts`;
     assert.equal((await post(path, { ids: [randomUUID()] })).status, 200);
     assert.equal((await post(path, { ids: ['bad'] })).status, 400);
-    assert.equal((await post(path, { ids: Array.from({ length: 51 }, () => randomUUID()) })).status, 400);
+    assert.equal(
+      (await post(path, { ids: Array.from({ length: 51 }, () => randomUUID()) })).status,
+      400,
+    );
     assert.equal((await post(path, { ids: [], actorId: account.id })).status, 400);
     assert.equal(
-      (await fetch(url + '/v1' + path, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: [] }),
-      })).status,
+      (
+        await fetch(url + '/v1' + path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: [] }),
+        })
+      ).status,
       401,
     );
   });

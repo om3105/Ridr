@@ -69,6 +69,7 @@ test('paired marker never substitutes the pillion position for a missing or stal
   assert.equal(group.data.features[0]!.properties.state, 'stale');
   assert.deepEqual(group.data.features[0]!.geometry.coordinates, [73.85, 18.52]);
   assert.match(group.data.features[0]!.properties.label, /pillion/);
+  assert.equal(group.data.features[0]!.properties.paired, true);
   snapshot.members[0]!.sharingEnabled = false;
   group = projectGroup(snapshot, Date.parse(snapshot.serverTime));
   assert.equal(group.data.features.length, 1);
@@ -76,6 +77,10 @@ test('paired marker never substitutes the pillion position for a missing or stal
   assert.ok(group.members[1]!.sample);
   snapshot.pairs = [];
   assert.equal(projectGroup(snapshot, Date.parse(snapshot.serverTime)).data.features.length, 2);
+  assert.equal(
+    projectGroup(snapshot, Date.parse(snapshot.serverTime)).data.features[0]!.properties.paired,
+    false,
+  );
 });
 test('missing movement stays unknown; low accuracy, waiting, future and ageing states are explicit', () => {
   const snapshot = fixture();

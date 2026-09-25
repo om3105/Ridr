@@ -236,6 +236,11 @@ export function parseAccept(body: unknown, key: string | undefined): AcceptChang
   exact(value, ['motion', 'capturedAt']);
   return { ...parseMotion(value), idempotencyKey: commandKey(key) };
 }
+function pairToken(value: unknown): string {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value))
+    throw new ApiError(400, 'INVALID_REQUEST', 'Scan a valid pair QR.');
+  return value;
+}
 
 function json(contentType: string | undefined) {
   if (!contentType || !/^application\/json(?:\s*;|$)/i.test(contentType))
@@ -250,6 +255,98 @@ function envelope<T>(data: T, response: Response, revision?: number) {
 @Controller()
 export class RideController {
   constructor(@Inject(RIDES) private readonly services: RideServices | null) {}
+
+  @Get('rides/:rideId/pairs/me')
+  async currentPair(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    return envelope(await this.services!.store.currentPair(account, rideId(id)), response);
+  }
+
+  @Post('rides/:rideId/pair-invitations')
+  async issuePairInvitation(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response, true);
+    json(request.headers['content-type']);
+    const value = object(body);
+    exact(value, ['motion', 'capturedAt']);
+    return envelope(
+      await this.services!.store.issuePairInvitation(account, rideId(id), parseMotion(value)),
+      response,
+    );
+  }
+
+  @Post('rides/:rideId/pair-invitations/preview')
+  @HttpCode(200)
+  async previewPairInvitation(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response, true);
+    json(request.headers['content-type']);
+    const value = object(body);
+    exact(value, ['token', 'motion', 'capturedAt']);
+    return envelope(
+      await this.services!.store.previewPairInvitation(account, rideId(id), {
+        ...parseMotion(value),
+        token: pairToken(value.token),
+      }),
+      response,
+    );
+  }
+
+  @Post('rides/:rideId/pairs')
+  async pair(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response, true);
+    json(request.headers['content-type']);
+    const value = object(body);
+    exact(value, ['pairInvitationId', 'token', 'consent', 'motion', 'capturedAt']);
+    if (value.consent !== true)
+      throw new ApiError(400, 'INVALID_REQUEST', 'Explicit pairing consent is required.');
+    return envelope(
+      await this.services!.store.pair(account, rideId(id), {
+        ...parseMotion(value),
+        pairInvitationId: rideId(String(value.pairInvitationId)),
+        token: pairToken(value.token),
+        consent: true,
+        idempotencyKey: commandKey(request.header('idempotency-key')),
+      }),
+      response,
+    );
+  }
+
+  @Delete('rides/:rideId/pairs/:pairId')
+  @HttpCode(204)
+  async unpair(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('pairId') pairId: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    json(request.headers['content-type']);
+    const value = object(body);
+    exact(value, ['motion', 'capturedAt']);
+    await this.services!.store.unpair(account, rideId(id), rideId(pairId), {
+      ...parseMotion(value),
+      idempotencyKey: commandKey(request.header('idempotency-key')),
+    });
+  }
 
   private async actor(request: Request, response: Response, limited = false) {
     if (!this.services) throw unavailable();

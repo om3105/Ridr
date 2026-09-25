@@ -94,6 +94,31 @@ export interface RotateInvite extends Partial<MotionContext> {
 }
 
 export interface RideStore {
+  currentPair(
+    account: VerifiedAccount,
+    rideId: string,
+  ): Promise<{ pair: { id: string; partnerName: string } | null }>;
+  issuePairInvitation(
+    account: VerifiedAccount,
+    rideId: string,
+    change: MotionContext,
+  ): Promise<PairInvitation>;
+  previewPairInvitation(
+    account: VerifiedAccount,
+    rideId: string,
+    change: MotionContext & { token: string },
+  ): Promise<PairPreview>;
+  pair(
+    account: VerifiedAccount,
+    rideId: string,
+    change: MotionContext & Command & { pairInvitationId: string; token: string; consent: true },
+  ): Promise<PairResult>;
+  unpair(
+    account: VerifiedAccount,
+    rideId: string,
+    pairId: string,
+    change: MotionContext & Command,
+  ): Promise<void>;
   sendMessage(account: VerifiedAccount, event: MessageEvent): Promise<RideMessage>;
   messageReceipts(
     account: VerifiedAccount,
@@ -202,6 +227,20 @@ export interface RideStore {
 
 export interface Command {
   idempotencyKey: string;
+}
+export interface PairInvitation {
+  pairInvitationId: string;
+  token: string;
+  expiresAt: string;
+}
+export interface PairPreview {
+  pairInvitationId: string;
+  counterpart: { memberId: string; displayName: string; physicalRole: PhysicalRole };
+  expiresAt: string;
+}
+export interface PairResult {
+  pair: { id: string; riderMemberId: string; pillionMemberId: string; createdAt: string };
+  readinessScanReceiptId: string;
 }
 export interface MotionContext {
   motion: {

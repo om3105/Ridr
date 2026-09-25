@@ -47,6 +47,7 @@ export function projectGroup(snapshot: LocationSnapshot, now: number) {
             member.state === 'live' ? '#16715b' : member.state === 'stale' ? '#697580' : '#ad6500',
           heading: member.heading,
           state: member.state,
+          paired: Boolean(passenger),
         },
         geometry: {
           type: 'Point' as const,

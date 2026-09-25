@@ -1470,10 +1470,9 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       const text = event('message.text', 'Meet at the next stop');
       const first = await rides.sendMessage(member, text);
       assert.equal((await rides.sendMessage(member, text)).id, first.id);
-      assert.deepEqual(
-        await rides.messageReceipts(member, id, [text.id, randomUUID()]),
-        { accepted: [text.id] },
-      );
+      assert.deepEqual(await rides.messageReceipts(member, id, [text.id, randomUUID()]), {
+        accepted: [text.id],
+      });
       assert.deepEqual(await rides.messageReceipts(leader, id, [text.id]), { accepted: [] });
       await assert.rejects(
         rides.messageReceipts(outsider, id, [text.id]),
@@ -1662,6 +1661,140 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
         [id],
       );
       assert.equal((await rides.trail(leader, id, created.membership.id)).points.length, 0);
+    },
+  );
+
+  await t.test(
+    'QR pairing requires fresh consent and restores separate members after unpair',
+    async () => {
+      const rider = account();
+      const pillion = account();
+      const outsider = account();
+      const created = await create(rider);
+      const joined = await join(pillion, created, 'pillion');
+      const otherRide = await create(outsider);
+      const id = created.ride.id;
+      const first = await rides.issuePairInvitation(rider, id, motion());
+      assert.equal(first.token.length, 43);
+      assert.equal(
+        (await rides.previewPairInvitation(pillion, id, { token: first.token, ...motion() }))
+          .counterpart.memberId,
+        created.membership.id,
+      );
+      await assert.rejects(
+        rides.previewPairInvitation(outsider, otherRide.ride.id, {
+          token: first.token,
+          ...motion(),
+        }),
+        rejectsCode('PAIR_CONFLICT'),
+      );
+      const second = await rides.issuePairInvitation(rider, id, motion());
+      await assert.rejects(
+        rides.previewPairInvitation(pillion, id, { token: first.token, ...motion() }),
+        rejectsCode('PAIR_CONFLICT'),
+      );
+      const pairChange = {
+        pairInvitationId: second.pairInvitationId,
+        token: second.token,
+        consent: true as const,
+        ...motion(),
+        ...command(),
+      };
+      const accepted = await rides.pair(pillion, id, pairChange);
+      assert.equal(accepted.pair.riderMemberId, created.membership.id);
+      assert.equal(accepted.pair.pillionMemberId, joined.membership.id);
+      assert.deepEqual(await rides.currentPair(rider, id), {
+        pair: {
+          id: accepted.pair.id,
+          partnerName: joined.membership.displayName,
+        },
+      });
+      assert.deepEqual(await rides.pair(pillion, id, pairChange), accepted);
+      assert.equal(
+        await count('SELECT count(*) FROM ridr.pairs WHERE ride_id=$1 AND ended_at IS NULL', [id]),
+        1,
+      );
+      await assert.rejects(
+        rides.pair(pillion, id, { ...pairChange, idempotencyKey: randomUUID() }),
+        rejectsCode('PAIR_CONFLICT'),
+      );
+      assert.equal(
+        await count('SELECT count(*) FROM ridr.pairs WHERE ride_id=$1 AND ended_at IS NULL', [id]),
+        1,
+      );
+      await rides.unpair(rider, id, accepted.pair.id, { ...motion(), ...command() });
+      assert.deepEqual(await rides.currentPair(pillion, id), { pair: null });
+      assert.equal(
+        await count('SELECT count(*) FROM ridr.pairs WHERE ride_id=$1 AND ended_at IS NULL', [id]),
+        0,
+      );
+      const fresh = await rides.issuePairInvitation(pillion, id, motion());
+      const repaired = await rides.pair(rider, id, {
+        pairInvitationId: fresh.pairInvitationId,
+        token: fresh.token,
+        consent: true,
+        ...motion(),
+        ...command(),
+      });
+      assert.notEqual(repaired.pair.id, accepted.pair.id);
+      assert.equal(
+        await count(
+          'SELECT count(*) FROM ridr.readiness WHERE pair_id=$1 AND invalidated_at IS NULL',
+          [repaired.pair.id],
+        ),
+        0,
+      );
+
+      const contendingRider = account();
+      const scannerA = account();
+      const scannerB = account();
+      const contested = await create(contendingRider);
+      await join(scannerA, contested, 'pillion');
+      await join(scannerB, contested, 'pillion');
+      const expired = await rides.issuePairInvitation(contendingRider, contested.ride.id, motion());
+      await pool.query(
+        `UPDATE ridr.consent_requests SET created_at=now()-interval '10 minutes',expires_at=now()-interval '5 minutes' WHERE id=$1`,
+        [expired.pairInvitationId],
+      );
+      await assert.rejects(
+        rides.previewPairInvitation(scannerA, contested.ride.id, {
+          token: expired.token,
+          ...motion(),
+        }),
+        rejectsCode('PAIR_CONFLICT'),
+      );
+      const valid = await rides.issuePairInvitation(contendingRider, contested.ride.id, motion());
+      const attempts = await Promise.allSettled(
+        [scannerA, scannerB].map((scanner) =>
+          rides.pair(scanner, contested.ride.id, {
+            pairInvitationId: valid.pairInvitationId,
+            token: valid.token,
+            consent: true,
+            ...motion(),
+            ...command(),
+          }),
+        ),
+      );
+      assert.equal(attempts.filter((attempt) => attempt.status === 'fulfilled').length, 1);
+      assert.equal(
+        attempts.filter(
+          (attempt) =>
+            attempt.status === 'rejected' && rejectsCode('PAIR_CONFLICT')(attempt.reason),
+        ).length,
+        1,
+      );
+      assert.equal(
+        await count('SELECT count(*) FROM ridr.pairs WHERE ride_id=$1 AND ended_at IS NULL', [
+          contested.ride.id,
+        ]),
+        1,
+      );
+      assert.equal(
+        await count('SELECT count(*) FROM ridr.active_pair_members WHERE ride_id=$1', [
+          contested.ride.id,
+        ]),
+        2,
+      );
     },
   );
 });

@@ -7,9 +7,13 @@ import { Button, Notice } from '../auth/components';
 export function InviteScanner({
   onScan,
   disabled = false,
+  label = 'Scan invite QR',
+  fallbackText = 'Use the code or link',
 }: {
   onScan(value: string): void;
   disabled?: boolean;
+  label?: string;
+  fallbackText?: string;
 }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(false);
@@ -52,16 +56,14 @@ export function InviteScanner({
       )
         return;
       if (!result.granted) {
-        setMessage(
-          'Camera access is off. Use the code or link, or enable camera access in Settings.',
-        );
+        setMessage(`Camera access is off. ${fallbackText}, or enable camera access in Settings.`);
         return;
       }
       accepted.current = false;
       setScanning(true);
     } catch {
       if (active.current && request === permissionRequest.current)
-        setMessage('The camera is unavailable. Use the code or link instead.');
+        setMessage(`The camera is unavailable. ${fallbackText} instead.`);
     } finally {
       if (active.current && request === permissionRequest.current) setBusy(false);
     }
@@ -76,7 +78,7 @@ export function InviteScanner({
           barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
           onMountError={() => {
             setScanning(false);
-            setMessage('The camera is unavailable. Use the code or link instead.');
+            setMessage(`The camera is unavailable. ${fallbackText} instead.`);
           }}
           onBarcodeScanned={({ data, type }) => {
             if (
@@ -93,7 +95,7 @@ export function InviteScanner({
         />
       )}
       <Button
-        label={scanning ? 'Close camera' : 'Scan invite QR'}
+        label={scanning ? 'Close camera' : label}
         secondary
         busy={busy}
         disabled={disabled}

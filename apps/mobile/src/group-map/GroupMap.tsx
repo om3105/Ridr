@@ -138,6 +138,18 @@ export default function GroupMap({
               paint={{ 'text-color': '#102f27', 'text-halo-color': '#fff', 'text-halo-width': 2 }}
             />
             <Layer
+              id="passenger-indicator"
+              type="symbol"
+              filter={['==', ['get', 'paired'], true]}
+              layout={{
+                'text-field': '2',
+                'text-size': 12,
+                'text-offset': [0.8, -0.8],
+                'text-allow-overlap': true,
+              }}
+              paint={{ 'text-color': '#102f27', 'text-halo-color': '#fff', 'text-halo-width': 2 }}
+            />
+            <Layer
               id="member-heading"
               type="symbol"
               filter={['!=', ['get', 'heading'], null]}

@@ -28,6 +28,7 @@ import {
   type SavedRoute,
 } from './route-planning.js';
 import * as lifecycle from './ride-management.js';
+import * as pairing from './ride-pairing.js';
 import {
   integer,
   rideProjection,
@@ -68,6 +69,9 @@ import type {
   RideSnapshot,
   RideStore,
   RotateInvite,
+  PairInvitation,
+  PairPreview,
+  PairResult,
 } from './ride-types.js';
 
 interface Receipt<T> {
@@ -863,6 +867,76 @@ export class PostgresRides implements RideStore {
   }
   management(account: VerifiedAccount, id: string): Promise<RideManagement> {
     return this.manage(account, id, null, lifecycle.management);
+  }
+  issuePairInvitation(
+    account: VerifiedAccount,
+    id: string,
+    change: MotionContext,
+  ): Promise<PairInvitation> {
+    return this.manage(account, id, null, (context) => pairing.issue(context, change));
+  }
+  currentPair(
+    account: VerifiedAccount,
+    id: string,
+  ): Promise<{ pair: { id: string; partnerName: string } | null }> {
+    return this.manage(account, id, null, async (context) => {
+      if (context.ride.state === 'ended' || context.own.left_at) throw notFound();
+      const result = await context.client.query<{ id: string; partner_name: string }>(
+        `SELECT pair.id,profile.display_name AS partner_name FROM ridr.pairs pair
+         JOIN ridr.memberships partner ON partner.id=CASE WHEN pair.rider_member_id=$2 THEN pair.pillion_member_id ELSE pair.rider_member_id END
+         JOIN ridr.profiles profile ON profile.id=partner.user_id
+         WHERE pair.ride_id=$1 AND pair.ended_at IS NULL AND (pair.rider_member_id=$2 OR pair.pillion_member_id=$2)`,
+        [id, context.own.id],
+      );
+      return {
+        pair: result.rows[0]
+          ? { id: result.rows[0].id, partnerName: result.rows[0].partner_name }
+          : null,
+      };
+    });
+  }
+  previewPairInvitation(
+    account: VerifiedAccount,
+    id: string,
+    change: MotionContext & { token: string },
+  ): Promise<PairPreview> {
+    return this.manage(account, id, null, (context) => pairing.preview(context, change));
+  }
+  pair(
+    account: VerifiedAccount,
+    id: string,
+    change: MotionContext & Command & { pairInvitationId: string; token: string; consent: true },
+  ): Promise<PairResult> {
+    const { idempotencyKey, ...body } = change;
+    return this.manage(
+      account,
+      id,
+      { method: 'POST', path: `/v1/rides/${id}/pairs`, key: idempotencyKey, body, status: 201 },
+      (context) => pairing.accept(context, change),
+    );
+  }
+  async unpair(
+    account: VerifiedAccount,
+    id: string,
+    pairId: string,
+    change: MotionContext & Command,
+  ): Promise<void> {
+    const { idempotencyKey, ...body } = change;
+    await this.manage(
+      account,
+      id,
+      {
+        method: 'DELETE',
+        path: `/v1/rides/${id}/pairs/${pairId}`,
+        key: idempotencyKey,
+        body,
+        status: 204,
+      },
+      async (context) => {
+        await pairing.unpair(context, pairId, change);
+        return {};
+      },
+    );
   }
   propose(
     account: VerifiedAccount,

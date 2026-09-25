@@ -287,6 +287,7 @@ function Lobby({
         startedAt={visibleRide.ride.startedAt}
         focus={mapFocus}
         physicalRole={visibleRide.membership.physicalRole}
+        transport={visibleRide.ride.transport}
         offline={offline}
       />
     );
@@ -327,6 +328,11 @@ function Lobby({
       {snapshot?.ride.state === 'active' && (
         <Link href={{ pathname: '/ride', params: { id } }} style={styles.link}>
           Open group map →
+        </Link>
+      )}
+      {snapshot?.ride.transport === 'motorcycle' && snapshot.ride.state !== 'ended' && (
+        <Link href={{ pathname: '/pair', params: { id } }} style={styles.link}>
+          Rider and pillion pairing →
         </Link>
       )}
       {snapshot?.ride.state === 'active' && (
