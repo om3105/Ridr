@@ -147,6 +147,43 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
   let revoked = false;
   const logs: string[] = [];
   const store: RideStore = {
+    headcount: async () => null,
+    beginHeadcount: async () => ({
+      id: randomUUID(),
+      state: 'open',
+      revision: 1,
+      openedAt: new Date().toISOString(),
+      completedAt: null,
+      pairingRevision: 0,
+      pairIds: [],
+      confirmedPairIds: [],
+      pairs: [],
+      ownPair: null,
+    }),
+    confirmHeadcount: async () => ({
+      id: randomUUID(),
+      state: 'open',
+      revision: 1,
+      openedAt: new Date().toISOString(),
+      completedAt: null,
+      pairingRevision: 0,
+      pairIds: [],
+      confirmedPairIds: [],
+      pairs: [],
+      ownPair: null,
+    }),
+    completeHeadcount: async () => ({
+      id: randomUUID(),
+      state: 'completed',
+      revision: 2,
+      openedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      pairingRevision: 0,
+      pairIds: [],
+      confirmedPairIds: [],
+      pairs: [],
+      ownPair: null,
+    }),
     readiness: async () => ({ ownMemberId: membership.id, ownPair: null, leaderPairs: [] }),
     issueReadinessScan: async () => ({
       challengeId: randomUUID(),
@@ -317,7 +354,12 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
     },
   };
   const app = await createApp(
-    readConfig({ NODE_ENV: 'test', DATABASE_URL: 'postgresql://test:test@127.0.0.1:1/ridr' }),
+    readConfig({
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://test:test@127.0.0.1:1/ridr',
+      INVITE_ACCOUNT_PER_MINUTE: '100',
+      INVITE_IP_PER_MINUTE: '100',
+    }),
     {
       database,
       rides: store,
@@ -332,6 +374,11 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
           close: async () => undefined,
         },
         profiles: {
+          readContact: async () => null,
+          saveContact: async () => {
+            throw new Error('unused');
+          },
+          deleteContact: async () => undefined,
           read: async () => {
             throw new Error('unused');
           },
@@ -357,6 +404,44 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
   };
   const post = (path: string, body: unknown) =>
     fetch(url + '/v1' + path, { method: 'POST', headers, body: JSON.stringify(body) });
+  await t.test(
+    'headcount HTTP requires current identities and a revision to complete',
+    async () => {
+      const base = `/rides/${ride.id}/headcounts`;
+      const context = {
+        motion: { state: 'stopped', source: 'speed', observedAt: new Date().toISOString() },
+        capturedAt: new Date().toISOString(),
+      };
+      assert.equal((await fetch(`${url}/v1${base}/current`, { headers })).status, 200);
+      assert.equal((await post(base, context)).status, 201);
+      assert.equal((await post(base, { ...context, memberId: membership.id })).status, 400);
+      assert.equal(
+        (
+          await fetch(`${url}/v1${base}/${randomUUID()}/pairs/${randomUUID()}`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify({ ...context, scanReceiptId: 'bad' }),
+          })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await fetch(`${url}/v1${base}/${randomUUID()}/complete`, {
+            method: 'POST',
+            headers: {
+              Authorization: headers.Authorization,
+              'Content-Type': headers['Content-Type'],
+              'Idempotency-Key': headers['Idempotency-Key'],
+            },
+            body: JSON.stringify(context),
+          })
+        ).status,
+        428,
+      );
+      assert.equal((await post(`${base}/${randomUUID()}/complete`, context)).status, 200);
+    },
+  );
   await t.test('readiness HTTP rejects malformed scans and unsigned attestations', async () => {
     const base = `/rides/${ride.id}`;
     const pairId = randomUUID();
@@ -372,7 +457,7 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
       201,
     );
     assert.equal(
-      (await post(`${base}/pairs/${pairId}/scan-challenges`, { ...context, roundId: randomUUID() }))
+      (await post(`${base}/pairs/${pairId}/scan-challenges`, { ...context, roundId: 'bad' }))
         .status,
       400,
     );

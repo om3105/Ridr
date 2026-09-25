@@ -94,12 +94,31 @@ export interface RotateInvite extends Partial<MotionContext> {
 }
 
 export interface RideStore {
+  headcount(account: VerifiedAccount, rideId: string): Promise<HeadcountRound | null>;
+  beginHeadcount(
+    account: VerifiedAccount,
+    rideId: string,
+    change: MotionContext & Command,
+  ): Promise<HeadcountRound>;
+  confirmHeadcount(
+    account: VerifiedAccount,
+    rideId: string,
+    roundId: string,
+    pairId: string,
+    change: MotionContext & Command & { scanReceiptId: string },
+  ): Promise<HeadcountRound>;
+  completeHeadcount(
+    account: VerifiedAccount,
+    rideId: string,
+    roundId: string,
+    change: MotionContext & Command & { revision: number },
+  ): Promise<HeadcountRound>;
   readiness(account: VerifiedAccount, rideId: string): Promise<ReadinessOverview>;
   issueReadinessScan(
     account: VerifiedAccount,
     rideId: string,
     pairId: string,
-    change: MotionContext & { roundId: null },
+    change: MotionContext & { roundId: string | null },
   ): Promise<ScanChallenge>;
   acceptReadinessScan(
     account: VerifiedAccount,
@@ -292,6 +311,25 @@ export interface ReadinessAttestation {
   helmetConfirmed: true;
   ready: true;
   confirmedAt: string;
+}
+export interface HeadcountPair {
+  id: string;
+  riderName: string;
+  pillionName: string;
+  confirmed: boolean;
+  confirmedAt: string | null;
+}
+export interface HeadcountRound {
+  id: string;
+  state: 'open' | 'completed';
+  revision: number;
+  openedAt: string;
+  completedAt: string | null;
+  pairingRevision: number;
+  pairIds: string[];
+  confirmedPairIds: string[];
+  pairs: HeadcountPair[] | null;
+  ownPair: HeadcountPair | null;
 }
 export interface MotionContext {
   motion: {

@@ -72,7 +72,10 @@ export async function createApp(
       config.auth,
       new PostgresSessions(config.auth.databaseUrl, logger),
     );
-    accounts = { verifier, profiles: new PostgresProfiles(config.databaseUrl, verifier, logger) };
+    accounts = {
+      verifier,
+      profiles: new PostgresProfiles(config.databaseUrl, verifier, logger, config.pushTokenKey),
+    };
   }
   const rideStore =
     options.rides ??

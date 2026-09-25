@@ -36,6 +36,7 @@ test('PostgreSQL profile transactions enforce ownership, replay, revisions and c
     process.env.DATABASE_URL,
     verifier,
     new OperationalLogger(() => undefined),
+    Buffer.alloc(32, 7).toString('base64'),
   );
   t.after(async () => {
     await profiles.close();
@@ -85,6 +86,42 @@ test('PostgreSQL profile transactions enforce ownership, replay, revisions and c
   );
   assert.deepEqual(await profiles.update(account, change), duplicateResults[0]);
   assert.equal((await profiles.read(account)).revision, 3);
+  assert.equal(await profiles.readContact(account), null);
+  const contactChange = {
+    name: 'Private contact',
+    phone: '+919876543210',
+    revision: null,
+    idempotencyKey: randomUUID(),
+  };
+  const savedContact = await profiles.saveContact(account, contactChange);
+  assert.deepEqual(savedContact, { name: 'Private contact', phone: '+919876543210', revision: 1 });
+  assert.deepEqual(await profiles.saveContact(account, contactChange), savedContact);
+  assert.equal(await profiles.readContact(other), null);
+  const storedContact = await pool.query<{ ciphertext: Buffer }>(
+    'SELECT ciphertext FROM ridr.emergency_contacts WHERE user_id=$1',
+    [account.id],
+  );
+  assert.equal(storedContact.rows[0]!.ciphertext.includes(Buffer.from(contactChange.phone)), false);
+  const receiptData = await pool.query<{ result: unknown }>(
+    'SELECT result FROM ridr.command_receipts WHERE actor_id=$1 AND command_id=$2',
+    [account.id, contactChange.idempotencyKey],
+  );
+  assert.equal(JSON.stringify(receiptData.rows[0]!.result).includes(contactChange.phone), false);
+  await assert.rejects(
+    profiles.saveContact(account, { ...contactChange, idempotencyKey: randomUUID() }),
+    (error: unknown) => error instanceof ApiError && error.status === 412,
+  );
+  const changedContact = await profiles.saveContact(account, {
+    name: 'Updated contact',
+    phone: '+919876543211',
+    revision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  assert.equal(changedContact.revision, 2);
+  const deleteKey = randomUUID();
+  await profiles.deleteContact(account, deleteKey);
+  await profiles.deleteContact(account, deleteKey);
+  assert.equal(await profiles.readContact(account), null);
   assert.equal(
     (await profiles.update(other, { ...change, displayName: 'Another account' })).id,
     other.id,
@@ -119,4 +156,13 @@ test('PostgreSQL profile transactions enforce ownership, replay, revisions and c
     (error: unknown) => error instanceof ApiError && error.status === 403,
   );
   assert.equal((await profiles.read(other)).displayName, 'Another account');
+  const deletedOwner = { ...account, id: randomUUID(), sessionId: randomUUID() };
+  await profiles.saveContact(deletedOwner, { ...contactChange, idempotencyKey: randomUUID() });
+  await pool.query('DELETE FROM ridr.command_receipts WHERE actor_id=$1', [deletedOwner.id]);
+  await pool.query('DELETE FROM ridr.profiles WHERE id=$1', [deletedOwner.id]);
+  assert.equal(
+    (await pool.query('SELECT 1 FROM ridr.emergency_contacts WHERE user_id=$1', [deletedOwner.id]))
+      .rowCount,
+    0,
+  );
 });

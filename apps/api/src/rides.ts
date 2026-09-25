@@ -256,6 +256,88 @@ function envelope<T>(data: T, response: Response, revision?: number) {
 export class RideController {
   constructor(@Inject(RIDES) private readonly services: RideServices | null) {}
 
+  @Get('rides/:rideId/headcounts/current')
+  async currentHeadcount(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    return envelope(await this.services!.store.headcount(account, rideId(id)), response);
+  }
+
+  @Post('rides/:rideId/headcounts')
+  async beginHeadcount(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response, true);
+    json(request.headers['content-type']);
+    const value = object(body);
+    exact(value, ['motion', 'capturedAt']);
+    return envelope(
+      await this.services!.store.beginHeadcount(account, rideId(id), {
+        ...parseMotion(value),
+        idempotencyKey: commandKey(request.header('idempotency-key')),
+      }),
+      response,
+    );
+  }
+
+  @Put('rides/:rideId/headcounts/:roundId/pairs/:pairId')
+  async confirmHeadcount(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('roundId') roundId: string,
+    @Param('pairId') pairId: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response, true);
+    json(request.headers['content-type']);
+    const value = object(body);
+    exact(value, ['scanReceiptId', 'motion', 'capturedAt']);
+    return envelope(
+      await this.services!.store.confirmHeadcount(
+        account,
+        rideId(id),
+        rideId(roundId),
+        rideId(pairId),
+        {
+          ...parseMotion(value),
+          scanReceiptId: rideId(String(value.scanReceiptId)),
+          idempotencyKey: commandKey(request.header('idempotency-key')),
+        },
+      ),
+      response,
+    );
+  }
+
+  @Post('rides/:rideId/headcounts/:roundId/complete')
+  @HttpCode(200)
+  async completeHeadcount(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('roundId') roundId: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response, true);
+    json(request.headers['content-type']);
+    const value = object(body);
+    exact(value, ['motion', 'capturedAt']);
+    return envelope(
+      await this.services!.store.completeHeadcount(account, rideId(id), rideId(roundId), {
+        ...parseMotion(value),
+        revision: rideRevision(request.header('if-match')),
+        idempotencyKey: commandKey(request.header('idempotency-key')),
+      }),
+      response,
+    );
+  }
+
   @Get('rides/:rideId/readiness')
   async readiness(
     @Req() request: Request,
@@ -278,12 +360,12 @@ export class RideController {
     json(request.headers['content-type']);
     const value = object(body);
     exact(value, ['roundId', 'motion', 'capturedAt']);
-    if (value.roundId !== null)
-      throw new ApiError(400, 'INVALID_REQUEST', 'Readiness scans have no rest-stop round.');
+    if (value.roundId !== null && (typeof value.roundId !== 'string' || !UUID.test(value.roundId)))
+      throw new ApiError(400, 'INVALID_REQUEST', 'Use a valid rest-stop round ID or null.');
     return envelope(
       await this.services!.store.issueReadinessScan(account, rideId(id), rideId(pairId), {
         ...parseMotion(value),
-        roundId: null,
+        roundId: value.roundId === null ? null : rideId(value.roundId),
       }),
       response,
     );

@@ -107,6 +107,13 @@ test('account HTTP routes derive identity, provide revision envelopes, protect e
         },
       },
       profiles: {
+        readContact: async () => null,
+        saveContact: async (_actor, change) => ({
+          name: change.name,
+          phone: change.phone,
+          revision: 1,
+        }),
+        deleteContact: async () => undefined,
         read: async (actor) => {
           assert.equal(actor.id, account.id);
           reads += 1;
@@ -183,6 +190,58 @@ test('account HTTP routes derive identity, provide revision envelopes, protect e
   });
   assert.equal(outage.status, 503);
   assert.ok(!(await outage.text()).includes('private-password'));
+  const contactUrl = `${url}/v1/me/emergency-contact`;
+  assert.equal((await fetch(contactUrl, { headers })).status, 200);
+  const createHeaders = {
+    Authorization: headers.Authorization,
+    'Content-Type': headers['Content-Type'],
+    'Idempotency-Key': headers['Idempotency-Key'],
+    'If-None-Match': '*',
+  };
+  const contact = { name: 'Private person', phone: '+919876543210' };
+  assert.equal(
+    (
+      await fetch(contactUrl, {
+        method: 'PUT',
+        headers: createHeaders,
+        body: JSON.stringify({ ...contact, userId: randomUUID() }),
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await fetch(contactUrl, {
+        method: 'PUT',
+        headers: createHeaders,
+        body: JSON.stringify({ ...contact, phone: '123' }),
+      })
+    ).status,
+    422,
+  );
+  assert.equal(
+    (
+      await fetch(contactUrl, {
+        method: 'PUT',
+        headers: {
+          Authorization: headers.Authorization,
+          'Content-Type': headers['Content-Type'],
+          'Idempotency-Key': headers['Idempotency-Key'],
+        },
+        body: JSON.stringify(contact),
+      })
+    ).status,
+    428,
+  );
+  const createdContact = await fetch(contactUrl, {
+    method: 'PUT',
+    headers: createHeaders,
+    body: JSON.stringify(contact),
+  });
+  assert.equal(createdContact.status, 200);
+  assert.equal(createdContact.headers.get('etag'), '"1"');
+  assert.equal((await createdContact.json()).data.phone, contact.phone);
+  assert.equal((await fetch(contactUrl, { method: 'DELETE', headers })).status, 204);
   revoked = true;
   assert.equal((await fetch(`${url}/v1/me`, { headers })).status, 401);
   assert.equal(reads, 1);

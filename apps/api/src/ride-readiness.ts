@@ -27,7 +27,11 @@ type PairRow = {
   created_at: Date;
 };
 
-async function currentPair(context: ManagementContext, pairId: string): Promise<PairRow> {
+export async function currentPair(
+  context: ManagementContext,
+  pairId: string,
+  allowLeader = false,
+): Promise<PairRow> {
   if (
     context.ride.transport !== 'motorcycle' ||
     context.ride.state === 'ended' ||
@@ -42,7 +46,9 @@ async function currentPair(context: ManagementContext, pairId: string): Promise<
   const pair = result.rows[0];
   if (
     !pair ||
-    (context.own.id !== pair.rider_member_id && context.own.id !== pair.pillion_member_id)
+    (context.own.id !== pair.rider_member_id &&
+      context.own.id !== pair.pillion_member_id &&
+      !(allowLeader && context.own.id === context.ride.leader_member_id))
   )
     throw conflict();
   const members = await context.client.query<{ membership_id: string }>(
@@ -127,23 +133,30 @@ export async function overview(context: ManagementContext): Promise<ReadinessOve
 export async function issueScan(
   context: ManagementContext,
   pairId: string,
-  change: MotionContext & { roundId: null },
+  change: MotionContext & { roundId: string | null },
 ): Promise<ScanChallenge> {
   const pair = await currentPair(context, pairId);
   await stationary(context.client, context.own.id, change);
-  if (change.roundId !== null) throw conflict();
+  if (change.roundId !== null) {
+    if (context.ride.state !== 'active') throw conflict();
+    const round = await context.client.query(
+      'SELECT 1 FROM ridr.headcount_rounds WHERE id=$1 AND ride_id=$2 AND completed_at IS NULL',
+      [change.roundId, context.ride.id],
+    );
+    if (!round.rowCount) throw conflict();
+  }
   await context.client.query(
     `UPDATE ridr.scan_challenges SET expires_at=clock_timestamp()
-     WHERE pair_id=$1 AND issued_by_member_id=$2 AND round_id IS NULL
+     WHERE pair_id=$1 AND issued_by_member_id=$2 AND round_id IS NOT DISTINCT FROM $3::uuid
        AND consumed_at IS NULL AND created_at < clock_timestamp() AND expires_at > clock_timestamp()`,
-    [pair.id, context.own.id],
+    [pair.id, context.own.id, change.roundId],
   );
   const token = randomBytes(32).toString('base64url');
   const challengeId = randomUUID();
   const result = await context.client.query<{ expires_at: Date }>(
-    `INSERT INTO ridr.scan_challenges (id,ride_id,pair_id,issued_by_member_id,token_hash,expires_at)
-     VALUES ($1,$2,$3,$4,$5,now()+interval '5 minutes') RETURNING expires_at`,
-    [challengeId, context.ride.id, pair.id, context.own.id, hash(token)],
+    `INSERT INTO ridr.scan_challenges (id,ride_id,pair_id,round_id,issued_by_member_id,token_hash,expires_at)
+     VALUES ($1,$2,$3,$4,$5,$6,now()+interval '5 minutes') RETURNING expires_at`,
+    [challengeId, context.ride.id, pair.id, change.roundId, context.own.id, hash(token)],
   );
   return { challengeId, token, expiresAt: result.rows[0]!.expires_at.toISOString() };
 }
@@ -153,16 +166,17 @@ export async function acceptScan(
   pairId: string,
   change: MotionContext & { challengeId: string; scannedToken: string },
 ): Promise<ScanReceipt> {
-  const pair = await currentPair(context, pairId);
+  const pair = await currentPair(context, pairId, true);
   await stationary(context.client, context.own.id, change);
   const result = await context.client.query<{
     issued_by_member_id: string;
+    round_id: string | null;
     expires_at: Date;
     consumed_at: Date | null;
     created_at: Date;
   }>(
-    `SELECT issued_by_member_id,expires_at,consumed_at,created_at FROM ridr.scan_challenges
-     WHERE id=$1 AND ride_id=$2 AND pair_id=$3 AND round_id IS NULL AND token_hash=$4 FOR UPDATE`,
+    `SELECT issued_by_member_id,round_id,expires_at,consumed_at,created_at FROM ridr.scan_challenges
+     WHERE id=$1 AND ride_id=$2 AND pair_id=$3 AND token_hash=$4 FOR UPDATE`,
     [change.challengeId, context.ride.id, pair.id, hash(change.scannedToken)],
   );
   const challenge = result.rows[0];
@@ -175,6 +189,17 @@ export async function acceptScan(
     ![pair.rider_member_id, pair.pillion_member_id].includes(challenge.issued_by_member_id)
   )
     throw conflict();
+  if (challenge.round_id === null) {
+    if (![pair.rider_member_id, pair.pillion_member_id].includes(context.own.id)) throw conflict();
+  } else {
+    if (context.ride.state !== 'active' || context.own.id !== context.ride.leader_member_id)
+      throw conflict();
+    const round = await context.client.query<{ opened_at: Date }>(
+      'SELECT opened_at FROM ridr.headcount_rounds WHERE id=$1 AND ride_id=$2 AND completed_at IS NULL AND leader_member_id=$3',
+      [challenge.round_id, context.ride.id, context.own.id],
+    );
+    if (!round.rows[0] || challenge.created_at < round.rows[0].opened_at) throw conflict();
+  }
   const consumed = await context.client.query(
     `UPDATE ridr.scan_challenges SET consumed_at=clock_timestamp()
      WHERE id=$1 AND consumed_at IS NULL AND expires_at > clock_timestamp() RETURNING id`,

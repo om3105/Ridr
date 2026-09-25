@@ -1187,7 +1187,7 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
         rides.sample(member, device, make(new Date(Date.now() + 10000).toISOString())),
         rejectsCode('CLOCK_SKEW'),
       );
-      const queued = make();
+      const queued = make(first.capturedAt);
       // Ensure the privacy cutoff is strictly later than this historical sample.
       await pool.query('SELECT pg_sleep(0.01)');
       await rides.stopSharing(member, id, stop(consent.consentEpoch));
@@ -1924,5 +1924,167 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
     await rides.unpair(lateRider, id, latePair.pair.id, { ...motion(), ...command() });
     assert.equal((await rides.readiness(leader, id)).leaderPairs?.length, 1);
     assert.equal((await rides.readiness(latePillion, id)).ownPair, null);
+  });
+  await t.test('rest-stop rounds need fresh leader scans and react to pair changes', async () => {
+    const leader = account(),
+      pillion = account(),
+      outsider = account();
+    const created = await create(leader);
+    const id = created.ride.id;
+    await join(pillion, created, 'pillion');
+    const invitation = await rides.issuePairInvitation(leader, id, motion());
+    const paired = await rides.pair(pillion, id, {
+      pairInvitationId: invitation.pairInvitationId,
+      token: invitation.token,
+      consent: true,
+      ...motion(),
+      ...command(),
+    });
+    await rides.attestReadiness(pillion, id, paired.pair.id, {
+      revision: 1,
+      helmetConfirmed: true,
+      ready: true,
+      scanReceiptId: paired.readinessScanReceiptId,
+      ...motion(),
+      ...command(),
+    });
+    await rides.start(leader, id, await startChange(leader, id));
+    assert.equal(await rides.headcount(leader, id), null);
+    await assert.rejects(
+      rides.beginHeadcount(pillion, id, { ...motion(), ...command() }),
+      rejectsCode('FORBIDDEN'),
+    );
+    const round = await rides.beginHeadcount(leader, id, { ...motion(), ...command() });
+    assert.deepEqual(round.pairIds, [paired.pair.id]);
+    assert.deepEqual(round.confirmedPairIds, []);
+    assert.equal((await rides.headcount(pillion, id))?.pairs, null);
+    await assert.rejects(
+      rides.completeHeadcount(leader, id, round.id, {
+        revision: round.revision,
+        ...motion(),
+        ...command(),
+      }),
+      rejectsCode('HEADCOUNT_INCOMPLETE'),
+    );
+    const challenge = await rides.issueReadinessScan(pillion, id, paired.pair.id, {
+      roundId: round.id,
+      ...motion(),
+    });
+    await assert.rejects(
+      rides.acceptReadinessScan(pillion, id, paired.pair.id, {
+        challengeId: challenge.challengeId,
+        scannedToken: challenge.token,
+        ...motion(),
+        ...command(),
+      }),
+      rejectsCode('READINESS_CONFLICT'),
+    );
+    const scan = await rides.acceptReadinessScan(leader, id, paired.pair.id, {
+      challengeId: challenge.challengeId,
+      scannedToken: challenge.token,
+      ...motion(),
+      ...command(),
+    });
+    const confirmation = { scanReceiptId: scan.scanReceiptId, ...motion(), ...command() };
+    const progress = await rides.confirmHeadcount(
+      leader,
+      id,
+      round.id,
+      paired.pair.id,
+      confirmation,
+    );
+    assert.deepEqual(progress.confirmedPairIds, [paired.pair.id]);
+    assert.deepEqual(
+      await rides.confirmHeadcount(leader, id, round.id, paired.pair.id, confirmation),
+      progress,
+    );
+    await assert.rejects(
+      rides.confirmHeadcount(outsider, id, round.id, paired.pair.id, {
+        ...confirmation,
+        idempotencyKey: randomUUID(),
+      }),
+      rejectsCode('NOT_FOUND'),
+    );
+    const complete = await rides.completeHeadcount(leader, id, round.id, {
+      revision: progress.revision,
+      ...motion(),
+      ...command(),
+    });
+    assert.equal(complete.state, 'completed');
+    const next = await rides.beginHeadcount(leader, id, { ...motion(), ...command() });
+    assert.deepEqual(next.confirmedPairIds, []);
+    await assert.rejects(
+      rides.confirmHeadcount(leader, id, next.id, paired.pair.id, {
+        scanReceiptId: scan.scanReceiptId,
+        ...motion(),
+        ...command(),
+      }),
+      rejectsCode('HEADCOUNT_CONFLICT'),
+    );
+    const lateRider = account(),
+      latePillion = account();
+    await join(lateRider, created, 'rider');
+    await join(latePillion, created, 'pillion');
+    const lateInvitation = await rides.issuePairInvitation(latePillion, id, motion());
+    const latePair = await rides.pair(lateRider, id, {
+      pairInvitationId: lateInvitation.pairInvitationId,
+      token: lateInvitation.token,
+      consent: true,
+      ...motion(),
+      ...command(),
+    });
+    assert.equal((await rides.headcount(leader, id))?.pairIds.length, 2);
+    await rides.unpair(pillion, id, paired.pair.id, { ...motion(), ...command() });
+    const refreshed = await rides.headcount(leader, id);
+    assert.deepEqual(refreshed?.pairIds, [latePair.pair.id]);
+    assert.ok((refreshed?.revision ?? 0) > next.revision);
+    assert.equal(
+      await count('SELECT count(*) FROM ridr.headcount_confirmations WHERE round_id=$1', [
+        round.id,
+      ]),
+      1,
+    );
+    await assert.rejects(
+      rides.completeHeadcount(leader, id, next.id, {
+        revision: next.revision,
+        ...motion(),
+        ...command(),
+      }),
+      rejectsCode('REVISION_CONFLICT'),
+    );
+    await assert.rejects(
+      rides.completeHeadcount(leader, id, next.id, {
+        revision: refreshed!.revision,
+        ...motion(),
+        ...command(),
+      }),
+      rejectsCode('HEADCOUNT_INCOMPLETE'),
+    );
+    const lateChallenge = await rides.issueReadinessScan(latePillion, id, latePair.pair.id, {
+      roundId: next.id,
+      ...motion(),
+    });
+    const lateReceipt = await rides.acceptReadinessScan(leader, id, latePair.pair.id, {
+      challengeId: lateChallenge.challengeId,
+      scannedToken: lateChallenge.token,
+      ...motion(),
+      ...command(),
+    });
+    const checked = await rides.confirmHeadcount(leader, id, next.id, latePair.pair.id, {
+      scanReceiptId: lateReceipt.scanReceiptId,
+      ...motion(),
+      ...command(),
+    });
+    assert.equal(
+      (
+        await rides.completeHeadcount(leader, id, next.id, {
+          revision: checked.revision,
+          ...motion(),
+          ...command(),
+        })
+      ).state,
+      'completed',
+    );
+    assert.deepEqual((await rides.headcount(leader, id))?.confirmedPairIds, [latePair.pair.id]);
   });
 });

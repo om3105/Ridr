@@ -151,9 +151,11 @@ async function clearPairs(context: ManagementContext, memberId?: string): Promis
     'UPDATE ridr.pairs SET ended_at = clock_timestamp(), revision = revision + 1 WHERE id = ANY($1::uuid[])',
     [ids],
   );
-  await client.query('DELETE FROM ridr.headcount_confirmations WHERE pair_id = ANY($1::uuid[])', [
-    ids,
-  ]);
+  await client.query(
+    `DELETE FROM ridr.headcount_confirmations hc USING ridr.headcount_rounds hr
+     WHERE hc.round_id=hr.id AND hr.completed_at IS NULL AND hc.pair_id=ANY($1::uuid[])`,
+    [ids],
+  );
   await client.query(
     `UPDATE ridr.scan_challenges SET expires_at = clock_timestamp()
     WHERE pair_id = ANY($1::uuid[]) AND consumed_at IS NULL AND expires_at > clock_timestamp() AND created_at < clock_timestamp()`,

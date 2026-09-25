@@ -210,7 +210,11 @@ export async function unpair(
     'UPDATE ridr.pairs SET ended_at=clock_timestamp(),revision=revision+1 WHERE id=$1',
     [pairId],
   );
-  await context.client.query('DELETE FROM ridr.headcount_confirmations WHERE pair_id=$1', [pairId]);
+  await context.client.query(
+    `DELETE FROM ridr.headcount_confirmations hc USING ridr.headcount_rounds hr
+     WHERE hc.round_id=hr.id AND hr.completed_at IS NULL AND hc.pair_id=$1`,
+    [pairId],
+  );
   await context.client.query(
     `UPDATE ridr.scan_challenges SET expires_at=clock_timestamp() WHERE pair_id=$1 AND consumed_at IS NULL AND created_at < clock_timestamp() AND expires_at > clock_timestamp()`,
     [pairId],

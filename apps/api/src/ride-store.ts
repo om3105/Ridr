@@ -30,6 +30,7 @@ import {
 import * as lifecycle from './ride-management.js';
 import * as pairing from './ride-pairing.js';
 import * as readiness from './ride-readiness.js';
+import * as headcount from './ride-headcount.js';
 import {
   integer,
   rideProjection,
@@ -77,6 +78,7 @@ import type {
   ScanChallenge,
   ScanReceipt,
   ReadinessAttestation,
+  HeadcountRound,
 } from './ride-types.js';
 
 interface Receipt<T> {
@@ -873,6 +875,69 @@ export class PostgresRides implements RideStore {
   management(account: VerifiedAccount, id: string): Promise<RideManagement> {
     return this.manage(account, id, null, lifecycle.management);
   }
+  headcount(account: VerifiedAccount, id: string): Promise<HeadcountRound | null> {
+    return this.manage(account, id, null, async (context) => ({
+      round: await headcount.readHeadcount(context),
+    })).then((result) => result.round);
+  }
+  beginHeadcount(
+    account: VerifiedAccount,
+    id: string,
+    change: MotionContext & Command,
+  ): Promise<HeadcountRound> {
+    const { idempotencyKey, ...body } = change;
+    return this.manage(
+      account,
+      id,
+      {
+        method: 'POST',
+        path: `/v1/rides/${id}/headcounts`,
+        key: idempotencyKey,
+        body,
+        status: 201,
+      },
+      (context) => headcount.beginHeadcount(context, change),
+    );
+  }
+  confirmHeadcount(
+    account: VerifiedAccount,
+    id: string,
+    roundId: string,
+    pairId: string,
+    change: MotionContext & Command & { scanReceiptId: string },
+  ): Promise<HeadcountRound> {
+    const { idempotencyKey, ...body } = change;
+    return this.manage(
+      account,
+      id,
+      {
+        method: 'PUT',
+        path: `/v1/rides/${id}/headcounts/${roundId}/pairs/${pairId}`,
+        key: idempotencyKey,
+        body,
+      },
+      (context) => headcount.confirmHeadcount(context, roundId, pairId, change),
+    );
+  }
+  completeHeadcount(
+    account: VerifiedAccount,
+    id: string,
+    roundId: string,
+    change: MotionContext & Command & { revision: number },
+  ): Promise<HeadcountRound> {
+    const { idempotencyKey, ...body } = change;
+    return this.manage(
+      account,
+      id,
+      {
+        method: 'POST',
+        path: `/v1/rides/${id}/headcounts/${roundId}/complete`,
+        key: idempotencyKey,
+        body,
+      },
+      (context) => headcount.completeHeadcount(context, roundId, change),
+    );
+  }
   readiness(account: VerifiedAccount, id: string): Promise<ReadinessOverview> {
     return this.manage(account, id, null, readiness.overview);
   }
@@ -880,7 +945,7 @@ export class PostgresRides implements RideStore {
     account: VerifiedAccount,
     id: string,
     pairId: string,
-    change: MotionContext & { roundId: null },
+    change: MotionContext & { roundId: string | null },
   ): Promise<ScanChallenge> {
     return this.manage(account, id, null, (context) =>
       readiness.issueScan(context, pairId, change),

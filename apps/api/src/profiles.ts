@@ -4,6 +4,12 @@ import type { PoolClient } from 'pg';
 import type { TokenVerifier, VerifiedAccount } from './auth.js';
 import { ApiError, unavailable } from './api-errors.js';
 import type { OperationalLogger } from './logging.js';
+import {
+  contactKey,
+  openContact,
+  sealContact,
+  type EmergencyContact,
+} from './emergency-contact.js';
 
 export interface Profile {
   id: string;
@@ -36,6 +42,12 @@ export interface ProfileChange {
 export interface ProfileStore {
   read(account: VerifiedAccount): Promise<Profile>;
   update(account: VerifiedAccount, change: ProfileChange): Promise<Profile>;
+  readContact(account: VerifiedAccount): Promise<EmergencyContact | null>;
+  saveContact(
+    account: VerifiedAccount,
+    change: { name: string; phone: string; revision: number | null; idempotencyKey: string },
+  ): Promise<EmergencyContact>;
+  deleteContact(account: VerifiedAccount, idempotencyKey: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -68,12 +80,15 @@ export function profileRequestHash(displayName: string): Buffer {
 
 export class PostgresProfiles implements ProfileStore {
   private readonly pool: Pool;
+  private readonly emergencyKey: Buffer | null;
 
   constructor(
     databaseUrl: string,
     private readonly verifier: TokenVerifier,
     logger: OperationalLogger,
+    pushTokenKey?: string,
   ) {
+    this.emergencyKey = contactKey(pushTokenKey);
     this.pool = new Pool({
       connectionString: databaseUrl,
       application_name: 'ridr-profiles',
@@ -138,10 +153,133 @@ export class PostgresProfiles implements ProfileStore {
     });
   }
 
-  private async withAccount(
+  async readContact(account: VerifiedAccount): Promise<EmergencyContact | null> {
+    return this.withAccount(account, async (client) => {
+      const found = await client.query<{
+        ciphertext: Buffer;
+        key_version: string;
+        revision: string;
+      }>('SELECT ciphertext,key_version,revision FROM ridr.emergency_contacts WHERE user_id=$1', [
+        account.id,
+      ]);
+      const row = found.rows[0];
+      if (!row) return null;
+      if (!this.emergencyKey || row.key_version !== 'push-derived-v1') throw unavailable();
+      const contact = openContact(row.ciphertext, this.emergencyKey, account.id);
+      if (contact.revision !== revisionNumber(row.revision)) throw unavailable();
+      return contact;
+    });
+  }
+
+  async saveContact(
     account: VerifiedAccount,
-    action: (client: PoolClient, row: ProfileRow) => Promise<Profile>,
-  ): Promise<Profile> {
+    change: { name: string; phone: string; revision: number | null; idempotencyKey: string },
+  ): Promise<EmergencyContact> {
+    return this.withAccount(account, async (client) => {
+      if (!this.emergencyKey) throw unavailable();
+      const name = change.name.trim();
+      const digest = createHash('sha256')
+        .update(
+          JSON.stringify({
+            method: 'PUT',
+            path: '/v1/me/emergency-contact',
+            body: { name, phone: change.phone, revision: change.revision },
+          }),
+        )
+        .digest();
+      const prior = await client.query<{
+        operation: string;
+        request_hash: Buffer;
+        result: { ciphertext: string };
+      }>(
+        'SELECT operation,request_hash,result FROM ridr.command_receipts WHERE actor_id=$1 AND command_id=$2',
+        [account.id, change.idempotencyKey],
+      );
+      const replay = prior.rows[0];
+      if (replay) {
+        if (
+          replay.operation !== 'PUT /v1/me/emergency-contact' ||
+          !digest.equals(replay.request_hash)
+        )
+          throw new ApiError(
+            409,
+            'IDEMPOTENCY_CONFLICT',
+            'This request key was used for another change.',
+          );
+        return openContact(
+          Buffer.from(replay.result.ciphertext, 'base64'),
+          this.emergencyKey,
+          account.id,
+        );
+      }
+      const existing = await client.query<{ revision: string }>(
+        'SELECT revision FROM ridr.emergency_contacts WHERE user_id=$1 FOR UPDATE',
+        [account.id],
+      );
+      const actual = existing.rows[0] ? revisionNumber(existing.rows[0].revision) : null;
+      if (actual !== change.revision)
+        throw new ApiError(
+          412,
+          'REVISION_CONFLICT',
+          'Your emergency contact changed. Reload before saving.',
+        );
+      const contact = { name, phone: change.phone, revision: (actual ?? 0) + 1 };
+      const ciphertext = sealContact(contact, this.emergencyKey, account.id);
+      await client.query(
+        `INSERT INTO ridr.emergency_contacts (user_id,ciphertext,key_version,revision)
+         VALUES ($1,$2,'push-derived-v1',$3)
+         ON CONFLICT (user_id) DO UPDATE SET ciphertext=EXCLUDED.ciphertext,
+           key_version=EXCLUDED.key_version,revision=EXCLUDED.revision,updated_at=clock_timestamp()`,
+        [account.id, ciphertext, contact.revision],
+      );
+      await client.query(
+        `INSERT INTO ridr.command_receipts (actor_id,command_id,operation,request_hash,http_status,result,expires_at)
+         VALUES ($1,$2,'PUT /v1/me/emergency-contact',$3,200,$4::jsonb,now()+interval '24 hours')`,
+        [
+          account.id,
+          change.idempotencyKey,
+          digest,
+          JSON.stringify({ ciphertext: ciphertext.toString('base64') }),
+        ],
+      );
+      return contact;
+    });
+  }
+
+  async deleteContact(account: VerifiedAccount, idempotencyKey: string): Promise<void> {
+    return this.withAccount(account, async (client) => {
+      const digest = createHash('sha256')
+        .update(JSON.stringify({ method: 'DELETE', path: '/v1/me/emergency-contact', body: {} }))
+        .digest();
+      const prior = await client.query<{ operation: string; request_hash: Buffer }>(
+        'SELECT operation,request_hash FROM ridr.command_receipts WHERE actor_id=$1 AND command_id=$2',
+        [account.id, idempotencyKey],
+      );
+      if (prior.rows[0]) {
+        if (
+          prior.rows[0].operation !== 'DELETE /v1/me/emergency-contact' ||
+          !digest.equals(prior.rows[0].request_hash)
+        )
+          throw new ApiError(
+            409,
+            'IDEMPOTENCY_CONFLICT',
+            'This request key was used for another change.',
+          );
+        return;
+      }
+      await client.query('DELETE FROM ridr.emergency_contacts WHERE user_id=$1', [account.id]);
+      await client.query(
+        `INSERT INTO ridr.command_receipts (actor_id,command_id,operation,request_hash,http_status,result,expires_at)
+         VALUES ($1,$2,'DELETE /v1/me/emergency-contact',$3,204,'{}'::jsonb,now()+interval '24 hours')`,
+        [account.id, idempotencyKey, digest],
+      );
+    });
+  }
+
+  private async withAccount<T>(
+    account: VerifiedAccount,
+    action: (client: PoolClient, row: ProfileRow) => Promise<T>,
+  ): Promise<T> {
     let client: PoolClient;
     try {
       client = await this.pool.connect();
