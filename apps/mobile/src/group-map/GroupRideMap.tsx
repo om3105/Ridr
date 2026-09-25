@@ -91,6 +91,14 @@ export function GroupRideMap({
       )}
       <Notice>{live.message}</Notice>
       <RideWarnings snapshot={live.snapshot} now={live.now} />
+      {physicalRole === 'pillion' && (
+        <>
+          <Link href={{ pathname: '/ride', params: { id, view: 'chat' } }} style={styles.link}>
+            Read ride messages →
+          </Link>
+          <PresetControls id={id} role="pillion" />
+        </>
+      )}
       <Text style={styles.detail}>
         Opening this map does not start location sharing. Green: live · amber: low accuracy · grey:
         stale. Paired markers use the rider’s position.
@@ -108,7 +116,7 @@ export function GroupRideMap({
         Purple markers are message pins; rider positions use their status colours. Tap the map to
         choose a coordinate for a new pinned message.
       </Text>
-      <PresetControls id={id} role={physicalRole} />
+      {physicalRole !== 'pillion' && <PresetControls id={id} role="rider" />}
       {recentPresets.map((preset) => (
         <View key={preset.id} style={styles.card}>
           <Text style={styles.label}>Ride preset · {preset.authorName}</Text>
@@ -170,6 +178,11 @@ export function GroupRideMap({
       {transport === 'motorcycle' && (
         <Link href={{ pathname: '/pair', params: { id } }} style={styles.link}>
           Rider and pillion pairing →
+        </Link>
+      )}
+      {transport === 'motorcycle' && (
+        <Link href={{ pathname: '/headcount', params: { id } }} style={styles.link}>
+          Rest-stop pair headcount →
         </Link>
       )}
       <Button label="Refresh group" secondary onPress={live.refresh} />

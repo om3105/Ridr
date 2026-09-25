@@ -74,7 +74,11 @@ export function RideChat({ id, pin }: { id: string; pin: { lat: number; lon: num
         const queued = await listPending(owner, id);
         if (queued.length) {
           const accepted = await run((options) =>
-            getMessageReceipts(options, id, queued.map((item) => item.draft.id)),
+            getMessageReceipts(
+              options,
+              id,
+              queued.map((item) => item.draft.id),
+            ),
           );
           for (const acceptedId of accepted) await removePending(acceptedId);
         }
@@ -291,8 +295,8 @@ export function RideChat({ id, pin }: { id: string; pin: { lat: number; lon: num
       <Text style={styles.title}>Ride messages</Text>
       <Notice>{notice}</Notice>
       <Text style={styles.detail}>
-        Text and pins are for coordination. Do not type while moving. Quick presets arrive on Day
-        14.
+        Text and pins are for coordination. Do not type while moving. Quick presets are available on
+        the group map.
       </Text>
       {messages.map((item) => (
         <View key={item.id} style={styles.card}>

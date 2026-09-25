@@ -36,7 +36,11 @@ export function PresetControls({ id, role }: { id: string; role: 'rider' | 'pill
       );
       if (queued.length) {
         const acceptedIds = await run((options) =>
-          getMessageReceipts(options, id, queued.map((item) => item.draft.id)),
+          getMessageReceipts(
+            options,
+            id,
+            queued.map((item) => item.draft.id),
+          ),
         );
         for (const acceptedId of acceptedIds) await removePending(acceptedId);
       }
@@ -104,7 +108,9 @@ export function PresetControls({ id, role }: { id: string; role: 'rider' | 'pill
   }
   return (
     <View style={styles.card}>
-      <Text style={styles.cardTitle}>Quick ride messages</Text>
+      <Text style={styles.cardTitle}>
+        {role === 'pillion' ? 'Pillion quick messages' : 'Quick ride messages'}
+      </Text>
       <Notice>{notice}</Notice>
       {presets.map((preset) => (
         <Button

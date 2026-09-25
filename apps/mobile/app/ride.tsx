@@ -335,6 +335,11 @@ function Lobby({
           Rider and pillion pairing →
         </Link>
       )}
+      {snapshot?.ride.transport === 'motorcycle' && snapshot.ride.state === 'active' && (
+        <Link href={{ pathname: '/headcount', params: { id } }} style={styles.link}>
+          Rest-stop pair headcount →
+        </Link>
+      )}
       {snapshot?.ride.state === 'active' && (
         <Link href={{ pathname: '/sharing', params: { id } }} style={styles.link}>
           Location sharing & live status →

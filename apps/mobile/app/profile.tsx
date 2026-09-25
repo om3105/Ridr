@@ -1,4 +1,4 @@
-import { Redirect } from 'expo-router';
+import { Link, Redirect } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { useEffect, useRef, useState } from 'react';
 import { Text } from 'react-native';
@@ -94,6 +94,9 @@ export default function ProfileScreen() {
         />
       )}
       <Notice>Editing your name never turns on location sharing.</Notice>
+      <Link href="/contact" style={styles.link}>
+        Manage private emergency contact →
+      </Link>
     </Page>
   );
 }

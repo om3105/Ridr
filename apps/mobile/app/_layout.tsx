@@ -22,6 +22,8 @@ export default function RootLayout() {
           <Stack.Screen name="environment" options={{ title: 'Test environment' }} />
           <Stack.Screen name="account" options={{ title: 'Your account' }} />
           <Stack.Screen name="profile" options={{ title: 'Your profile' }} />
+          <Stack.Screen name="contact" options={{ title: 'Emergency contact' }} />
+          <Stack.Screen name="headcount" options={{ title: 'Rest-stop headcount' }} />
           <Stack.Screen name="map" options={{ title: 'Explore the map' }} />
           <Stack.Screen name="permissions" options={{ title: 'Permissions & device checks' }} />
           <Stack.Screen name="rides" options={{ title: 'Your rides' }} />
