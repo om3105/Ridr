@@ -3,6 +3,9 @@ import { parseSample } from '../src/location.js';
 import { parseMessage } from '../src/messages.js';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join as joinPath, resolve } from 'node:path';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { ApiError, unauthenticated } from '../src/api-errors.js';
@@ -40,6 +43,9 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
     'Management integration tests require a local database.',
   );
   const pool = new Pool({ connectionString: databaseUrl, max: 3 });
+  const previousVoiceDir = process.env.VOICE_MEDIA_DIR;
+  const voiceDir = await mkdtemp(joinPath(tmpdir(), 'ridr-voice-test-'));
+  process.env.VOICE_MEDIA_DIR = voiceDir;
   const actorIds: string[] = [];
   const rideIds: string[] = [];
   const revoked = new Set<string>();
@@ -218,6 +224,7 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       for (const table of [
         'outbox_events',
         'messages',
+        'media_assets',
         'status_links',
         'active_memberships',
         'headcount_confirmations',
@@ -259,6 +266,9 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
     } finally {
       client.release();
       await pool.end();
+      await rm(voiceDir, { recursive: true, force: true });
+      if (previousVoiceDir === undefined) delete process.env.VOICE_MEDIA_DIR;
+      else process.env.VOICE_MEDIA_DIR = previousVoiceDir;
     }
   });
 
@@ -1365,7 +1375,7 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       await rides.start(leader, id, await startChange(leader, id));
       const event = (kind: 'message.text' | 'message.pin', text: string) => {
         const proof = motion();
-        return parseMessage({
+        const parsed = parseMessage({
           v: 1,
           type: kind,
           id: randomUUID(),
@@ -1377,6 +1387,9 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
             ...(kind === 'message.pin' ? { coordinate: { lat: 18.52, lon: 73.85 } } : {}),
           },
         });
+        if (parsed.type === 'message.preset' || parsed.type === 'message.voice')
+          throw new Error('Unexpected message type');
+        return parsed;
       };
       const text = event('message.text', 'Meet at the next stop');
       const first = await rides.sendMessage(member, text);
@@ -1387,6 +1400,18 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       );
       const pinned = await rides.sendMessage(leader, event('message.pin', 'Stop here'));
       assert.ok(first.sequence < pinned.sequence);
+      const preset = parseMessage({
+        v: 1,
+        type: 'message.preset',
+        id: randomUUID(),
+        rideId: id,
+        capturedAt: new Date().toISOString(),
+        payload: { preset: 'need_stop' },
+      });
+      const acceptedPreset = await rides.sendMessage(member, preset);
+      assert.equal(acceptedPreset.kind, 'preset');
+      assert.equal(acceptedPreset.preset, 'need_stop');
+      assert.equal((await rides.sendMessage(member, preset)).id, acceptedPreset.id);
       const page = await rides.messages(member, id, 0, 1);
       assert.deepEqual(
         page.items.map((item) => item.id),
@@ -1395,7 +1420,7 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       assert.equal(page.nextSequence, first.sequence);
       assert.deepEqual(
         (await rides.messages(member, id, first.sequence, 10)).items.map((item) => item.id),
-        [pinned.id],
+        [pinned.id, acceptedPreset.id],
       );
       assert.deepEqual(pinned.coordinate, { lat: 18.52, lon: 73.85 });
       await assert.rejects(rides.messages(outsider, id, 0, 10), rejectsCode('NOT_FOUND'));
@@ -1417,6 +1442,60 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       );
     },
   );
+  await t.test('voice upload is private, idempotent, and bound to its active sender', async () => {
+    const leader = account(),
+      member = account(),
+      outsider = account();
+    const created = await create(leader);
+    await join(member, created, 'rider');
+    await rides.start(leader, created.ride.id, await startChange(leader, created.ride.id));
+    const proof = motion();
+    const upload = {
+      mediaId: randomUUID(),
+      capturedAt: proof.capturedAt,
+      motion: proof.motion,
+      bytes: await readFile(resolve(process.cwd(), 'test/fixtures/one-second-aac.m4a')),
+    };
+    const voice = await rides.uploadVoice(member, created.ride.id, upload);
+    assert.equal(voice.kind, 'voice');
+    assert.equal(voice.mediaId, upload.mediaId);
+    assert.equal((await rides.uploadVoice(member, created.ride.id, upload)).id, voice.id);
+    assert.deepEqual(
+      await rides.voiceContent(leader, created.ride.id, upload.mediaId),
+      upload.bytes,
+    );
+    await assert.rejects(
+      rides.voiceContent(outsider, created.ride.id, upload.mediaId),
+      rejectsCode('NOT_FOUND'),
+    );
+    await assert.rejects(
+      rides.uploadVoice(outsider, created.ride.id, { ...upload, mediaId: randomUUID() }),
+      rejectsCode('NOT_FOUND'),
+    );
+    await assert.rejects(
+      rides.uploadVoice(member, created.ride.id, {
+        ...upload,
+        mediaId: randomUUID(),
+        bytes: Buffer.alloc(128),
+      }),
+      rejectsCode('INVALID_VOICE'),
+    );
+    await rides.leave(member, created.ride.id, stop(0));
+    await assert.rejects(
+      rides.voiceContent(member, created.ride.id, upload.mediaId),
+      rejectsCode('NOT_FOUND'),
+    );
+    await rides.end(leader, created.ride.id, {
+      ...command(),
+      reason: 'completed',
+      capturedAt: new Date().toISOString(),
+      consentEpoch: 0,
+    });
+    await assert.rejects(
+      rides.voiceContent(leader, created.ride.id, upload.mediaId),
+      rejectsCode('NOT_FOUND'),
+    );
+  });
   await t.test(
     'trail pages enforce membership, stable cursors, stop/leave privacy, retention and deletion',
     async () => {

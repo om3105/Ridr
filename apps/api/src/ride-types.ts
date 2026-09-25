@@ -101,6 +101,12 @@ export interface RideStore {
     afterSequence: number,
     limit: number,
   ): Promise<{ items: RideMessage[]; nextSequence: number | null }>;
+  uploadVoice(
+    account: VerifiedAccount,
+    rideId: string,
+    upload: { mediaId: string; capturedAt: string; motion: MotionContext['motion']; bytes: Buffer },
+  ): Promise<RideMessage>;
+  voiceContent(account: VerifiedAccount, rideId: string, mediaId: string): Promise<Buffer>;
   registerPush(
     account: VerifiedAccount,
     deviceId: string,

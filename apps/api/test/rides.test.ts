@@ -151,6 +151,12 @@ test('ride HTTP routes use verified actors, strict envelopes, safe errors and co
       throw new Error('Unused');
     },
     messages: async () => ({ items: [], nextSequence: null }),
+    uploadVoice: async () => {
+      throw new Error('Unused');
+    },
+    voiceContent: async () => {
+      throw new Error('Unused');
+    },
     registerPush: async () => ({ enabled: false, expiresAt: null }),
     pushStatus: async () => ({ configured: false, registered: false, deliveries: [] }),
     alertSettings: async (_actor, _id, change) => ({ value: change.value }),

@@ -1,6 +1,7 @@
 import { randomUUID } from 'expo-crypto';
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { Link, useFocusEffect } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Text, View } from 'react-native';
 import { io } from 'socket.io-client';
 import { useAuth } from '../auth/provider';
@@ -8,8 +9,9 @@ import { Button, Field, Notice, Page, styles } from '../auth/components';
 import { getRideManagement, RideError } from '../rides/api';
 import { useMotionCheck } from '../rides/use-motion-check';
 import { useRides } from '../rides/provider';
-import { getMessages, sendMessage, type ChatMessage, type Draft } from './api';
+import { draftLabel, getMessages, sendMessage, type ChatMessage, type Draft } from './api';
 import { draftRecovery } from './recovery';
+import { VoiceComposer } from './VoiceComposer';
 import {
   enqueue,
   listPending,
@@ -31,10 +33,27 @@ export function RideChat({ id, pin }: { id: string; pin: { lat: number; lon: num
   const [composer, setComposer] = useState(false);
   const [busy, setBusy] = useState(false);
   const [more, setMore] = useState<number | null>(null);
+  const [playing, setPlaying] = useState<string | null>(null);
+  const player = useAudioPlayer(null);
+  const playback = useAudioPlayerStatus(player);
   const reading = useRef(false);
   const sending = useRef(false);
   const lastSequence = useRef(0);
   const owner = auth.profile?.id ?? '';
+  useEffect(() => {
+    if (playback.didJustFinish) setPlaying(null);
+  }, [playback.didJustFinish]);
+  useEffect(() => {
+    if (!playing) return;
+    const timer = setTimeout(() => {
+      if (!player.currentStatus.isLoaded) {
+        player.pause();
+        setPlaying(null);
+        setNotice('Voice note could not be played. Check your connection and try again.');
+      }
+    }, 10000);
+    return () => clearTimeout(timer);
+  }, [playing, player]);
 
   const refresh = useCallback(
     async (loadOlder = false) => {
@@ -232,6 +251,26 @@ export function RideChat({ id, pin }: { id: string; pin: { lat: number; lon: num
     setPending(await listPending(owner, id));
     void refresh();
   }
+  async function playVoice(mediaId: string) {
+    if (playing === mediaId) {
+      player.pause();
+      setPlaying(null);
+      return;
+    }
+    try {
+      await run(async (options) => {
+        player.pause();
+        player.replace({
+          uri: `${options.apiUrl.replace(/\/$/, '')}/v1/rides/${id}/media/${mediaId}/content`,
+          headers: { Authorization: `Bearer ${options.accessToken}` },
+        });
+        player.play();
+      });
+      setPlaying(mediaId);
+    } catch {
+      setNotice('Voice note could not be played. Check your connection and try again.');
+    }
+  }
   return (
     <Page>
       <Text style={styles.eyebrow}>RIDE CHAT</Text>
@@ -248,6 +287,19 @@ export function RideChat({ id, pin }: { id: string; pin: { lat: number; lon: num
             {item.authorName}
           </Text>
           <Text style={styles.detail}>{item.text}</Text>
+          {item.mediaId && (
+            <Button
+              label={
+                playing === item.mediaId
+                  ? 'Pause voice note'
+                  : `Play voice note · ${Math.ceil(item.durationSeconds ?? 0)} sec`
+              }
+              secondary
+              onPress={() => {
+                void playVoice(item.mediaId!);
+              }}
+            />
+          )}
           {item.coordinate && (
             <>
               <Text selectable style={styles.detail}>
@@ -294,7 +346,7 @@ export function RideChat({ id, pin }: { id: string; pin: { lat: number; lon: num
                 : 'Unsent · ride ended or draft expired'}
           </Text>
           <Text selectable style={styles.detail}>
-            {item.draft.payload.text}
+            {draftLabel(item.draft)}
           </Text>
           {item.state === 'failed' && canSend && (
             <Button
@@ -333,6 +385,13 @@ export function RideChat({ id, pin }: { id: string; pin: { lat: number; lon: num
             disabled={!motion.ready || !text.trim()}
             onPress={() => {
               void compose();
+            }}
+          />
+          <VoiceComposer
+            id={id}
+            motion={motion}
+            onSent={() => {
+              void refresh();
             }}
           />
         </View>

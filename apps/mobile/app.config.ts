@@ -29,6 +29,14 @@ const config: ExpoConfig = {
     'expo-router',
     'expo-dev-client',
     'expo-notifications',
+    [
+      'expo-audio',
+      {
+        microphonePermission: 'Allow Ridr to record a voice note when you choose Record.',
+        enableBackgroundRecording: false,
+        enableBackgroundPlayback: false,
+      },
+    ],
     'expo-secure-store',
     [
       'expo-camera',

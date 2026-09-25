@@ -18,6 +18,8 @@
     "@maplibre/maplibre-react-native": "11.3.10",
     "@supabase/auth-js": "2.116.0",
     "expo": "55.0.31",
+    "expo-asset": "55.0.20",
+    "expo-audio": "55.0.18",
     "expo-battery": "55.0.17",
     "expo-build-properties": "55.0.18",
     "expo-camera": "55.0.23",

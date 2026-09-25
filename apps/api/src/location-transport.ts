@@ -10,7 +10,10 @@ import {
   Query,
   Req,
   Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { OnApplicationShutdown } from '@nestjs/common';
 import {
   ConnectedSocket,
@@ -21,7 +24,8 @@ import {
 import type { Socket } from 'socket.io';
 import type { Request, Response } from 'express';
 import { ApiError, unauthenticated, unavailable } from './api-errors.js';
-import { RIDES, rideId, type RideServices } from './rides.js';
+import { RIDES, parseMotion, rideId, type RideServices } from './rides.js';
+import { UUID } from './auth.js';
 import { exactObject, parseSample, type LocationSample } from './location.js';
 import { parseMessage, type MessageEvent } from './messages.js';
 import { RideLimiter } from './ride-limits.js';
@@ -156,6 +160,65 @@ export class LocationController {
       await this.services!.store.messages(actor, rideId(id), after, limit),
       response,
     );
+  }
+  @Post('rides/:rideId/media/voice')
+  @UseInterceptors(
+    FileInterceptor('voice', {
+      limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 3, parts: 4, fieldSize: 2048 },
+    }),
+  )
+  async uploadVoice(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @UploadedFile() file: { buffer: Buffer; mimetype: string } | undefined,
+    @Body() body: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const actor = await this.actor(request);
+    if (
+      !file ||
+      file.mimetype !== 'audio/mp4' ||
+      !body ||
+      Object.keys(body).sort().join(',') !== 'capturedAt,mediaId,motion' ||
+      typeof body.motion !== 'string' ||
+      typeof body.mediaId !== 'string' ||
+      !UUID.test(body.mediaId) ||
+      request.header('idempotency-key')?.toLowerCase() !== body.mediaId.toLowerCase()
+    )
+      throw new ApiError(
+        400,
+        'INVALID_REQUEST',
+        'Upload one AAC voice recording with its message ID and motion check.',
+      );
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body.motion);
+    } catch {
+      throw new ApiError(400, 'INVALID_REQUEST', 'Invalid motion check.');
+    }
+    const motion = parseMotion({ capturedAt: body.capturedAt, motion: parsed });
+    return this.envelope(
+      await this.services!.store.uploadVoice(actor, rideId(id), {
+        mediaId: body.mediaId.toLowerCase(),
+        capturedAt: motion.capturedAt,
+        motion: motion.motion,
+        bytes: file.buffer,
+      }),
+      response,
+    );
+  }
+  @Get('rides/:rideId/media/:mediaId/content')
+  async voiceContent(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('mediaId') mediaId: string,
+    @Res() response: Response,
+  ) {
+    const actor = await this.actor(request);
+    if (!UUID.test(mediaId)) throw new ApiError(400, 'INVALID_REQUEST', 'Invalid voice note ID.');
+    const bytes = await this.services!.store.voiceContent(actor, rideId(id), mediaId.toLowerCase());
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.type('audio/mp4').send(bytes);
   }
   @Post('rides/:rideId/events')
   @HttpCode(200)

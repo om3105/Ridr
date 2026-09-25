@@ -1,4 +1,5 @@
 import { RideWarnings } from './RideWarnings';
+import { PresetControls } from '../chat/PresetControls';
 import { getMessages, type ChatMessage } from '../chat/api';
 import { Link } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -13,22 +14,26 @@ export function GroupRideMap({
   name,
   startedAt,
   focus,
+  physicalRole,
 }: {
   id: string;
   name: string;
   startedAt: string | null;
   focus: { lat: number; lon: number } | null;
+  physicalRole: 'rider' | 'pillion';
 }) {
   const live = useGroupLocations(id, startedAt);
   const group = live.snapshot ? projectGroup(live.snapshot, live.now) : null;
   const { run } = useRides();
   const [pins, setPins] = useState<ChatMessage[]>([]);
+  const [recentPresets, setRecentPresets] = useState<ChatMessage[]>([]);
   const lastPinSequence = useRef(0);
   const [chosen, setChosen] = useState<{ lat: number; lon: number } | null>(null);
   const available = live.snapshot !== null;
   useEffect(() => {
     if (!available) {
       setPins([]);
+      setRecentPresets([]);
       lastPinSequence.current = 0;
       setChosen(null);
       return;
@@ -43,6 +48,9 @@ export function GroupRideMap({
         if (active) {
           if (page.items.length) lastPinSequence.current = page.items.at(-1)!.sequence;
           setPins((previous) => [...previous, ...page.items.filter((item) => item.kind === 'pin')]);
+          setRecentPresets((previous) =>
+            [...previous, ...page.items.filter((item) => item.kind === 'preset')].slice(-5),
+          );
         }
       } catch {
         // Keep previously accepted pins through a temporary connection failure.
@@ -83,6 +91,16 @@ export function GroupRideMap({
         Purple markers are message pins; rider positions use their status colours. Tap the map to
         choose a coordinate for a new pinned message.
       </Text>
+      <PresetControls id={id} role={physicalRole} />
+      {recentPresets.map((preset) => (
+        <View key={preset.id} style={styles.card}>
+          <Text style={styles.label}>Ride preset · {preset.authorName}</Text>
+          <Text style={styles.cardTitle}>{preset.text}</Text>
+          <Text style={styles.detail}>
+            Accepted {new Date(preset.acceptedAt).toLocaleTimeString()}
+          </Text>
+        </View>
+      ))}
       <GroupMap
         data={group?.data ?? { type: 'FeatureCollection', features: [] }}
         focus={focus}

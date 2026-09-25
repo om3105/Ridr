@@ -270,6 +270,7 @@ function Lobby({
         name={management.ride.name}
         startedAt={management.ride.startedAt}
         focus={mapFocus}
+        physicalRole={management.membership.physicalRole}
       />
     );
   return (

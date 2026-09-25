@@ -1,4 +1,5 @@
 import { request, type RideClientOptions } from '../rides/api';
+import { isPreset, type PresetCode } from './presets';
 
 export interface ChatMessage {
   id: string;
@@ -6,24 +7,33 @@ export interface ChatMessage {
   sequence: number;
   authorMemberId: string;
   authorName: string;
-  kind: 'text' | 'pin';
+  kind: 'text' | 'pin' | 'preset' | 'voice';
   text: string;
+  preset: PresetCode | null;
+  mediaId: string | null;
+  durationSeconds: number | null;
   coordinate: { lat: number; lon: number } | null;
   capturedAt: string;
   acceptedAt: string;
 }
-export interface Draft {
+interface DraftBase {
   v: 1;
-  type: 'message.text' | 'message.pin';
   id: string;
   rideId: string;
   capturedAt: string;
-  payload: {
-    text: string;
-    motion: { state: 'stopped'; source: 'speed' | 'activity'; observedAt: string };
-    coordinate?: { lat: number; lon: number };
-  };
 }
+export type Draft =
+  | (DraftBase & { type: 'message.preset'; payload: { preset: PresetCode } })
+  | (DraftBase & {
+      type: 'message.text' | 'message.pin';
+      payload: {
+        text: string;
+        motion: { state: 'stopped'; source: 'speed' | 'activity'; observedAt: string };
+        coordinate?: { lat: number; lon: number };
+      };
+    });
+export const draftLabel = (draft: Draft) =>
+  draft.type === 'message.preset' ? `Preset: ${draft.payload.preset}` : draft.payload.text;
 const uuid = (value: unknown): value is string =>
   typeof value === 'string' &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -40,13 +50,22 @@ export function parseChatMessage(value: unknown, rideId: string): ChatMessage {
     !uuid(row.authorMemberId) ||
     typeof row.authorName !== 'string' ||
     !row.authorName ||
-    (row.kind !== 'text' && row.kind !== 'pin') ||
+    !['text', 'pin', 'preset', 'voice'].includes(String(row.kind)) ||
     typeof row.text !== 'string' ||
     [...row.text].length < 1 ||
     [...row.text].length > 1000 ||
     !time(row.capturedAt) ||
     !time(row.acceptedAt) ||
     (row.kind === 'text' && row.coordinate !== null) ||
+    (row.kind === 'preset' && (!isPreset(row.preset) || row.coordinate !== null)) ||
+    (row.kind === 'voice' &&
+      (!uuid(row.mediaId) ||
+        !Number.isFinite(row.durationSeconds) ||
+        row.durationSeconds! <= 0 ||
+        row.durationSeconds! > 30 ||
+        row.coordinate !== null)) ||
+    (row.kind !== 'preset' && row.preset !== null) ||
+    (row.kind !== 'voice' && (row.mediaId !== null || row.durationSeconds !== null)) ||
     (row.kind === 'pin' &&
       (!row.coordinate ||
         !Number.isFinite(row.coordinate.lat) ||
@@ -93,4 +112,34 @@ export function sendMessage(options: RideClientOptions, draft: Draft) {
     idempotencyKey: draft.id,
     parse: (value) => parseChatMessage(value, draft.rideId),
   });
+}
+export function uploadVoice(
+  options: RideClientOptions,
+  upload: {
+    rideId: string;
+    mediaId: string;
+    capturedAt: string;
+    motion: { state: 'stopped'; source: 'speed' | 'activity'; observedAt: string };
+    uri: string;
+  },
+) {
+  const form = new FormData();
+  form.append('mediaId', upload.mediaId);
+  form.append('capturedAt', upload.capturedAt);
+  form.append('motion', JSON.stringify(upload.motion));
+  form.append('voice', {
+    uri: upload.uri,
+    name: `${upload.mediaId}.m4a`,
+    type: 'audio/mp4',
+  } as unknown as Blob);
+  return request(
+    { ...options, timeoutMs: 60000 },
+    {
+      path: `/v1/rides/${upload.rideId}/media/voice`,
+      method: 'POST',
+      form,
+      idempotencyKey: upload.mediaId,
+      parse: (value) => parseChatMessage(value, upload.rideId),
+    },
+  );
 }

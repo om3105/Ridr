@@ -48,6 +48,9 @@
     "typescript-eslint": "8.48.1"
   },
   "overrides": {
+    "expo-audio": {
+      "expo-asset": "55.0.20"
+    },
     "@nestjs/platform-express": {
       "multer": "2.3.0"
     },

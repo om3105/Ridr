@@ -243,6 +243,11 @@ async function responseError(
       'invalid',
       'Use one continuous GPX track or route with 2–10,000 valid points. Disconnected segments, malformed XML and invalid coordinates are not supported. Your saved route is unchanged.',
     );
+  if (response.status === 422 && code === 'INVALID_VOICE')
+    return new RideError(
+      'invalid',
+      'Record an AAC voice note of 30 seconds or less, then try again.',
+    );
   if (routeRequest && response.status === 413)
     return new RideError(
       'invalid',

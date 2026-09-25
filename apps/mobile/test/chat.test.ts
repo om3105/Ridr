@@ -15,6 +15,9 @@ test('chat parser preserves pin coordinates and original capture time', () => {
     authorName: 'Rider',
     kind: 'pin',
     text: 'At this turn',
+    preset: null,
+    mediaId: null,
+    durationSeconds: null,
     coordinate: { lat: 18.52, lon: 73.85 },
     capturedAt: now,
     acceptedAt: new Date(Date.parse(now) + 1000).toISOString(),
@@ -25,6 +28,45 @@ test('chat parser preserves pin coordinates and original capture time', () => {
     parseChatMessage({ ...message, coordinate: { lat: 91, lon: 73.85 } }, rideId),
   );
   assert.throws(() => parseChatMessage({ ...message, sequence: -1 }, rideId));
+});
+test('preset messages parse with a named code and no coordinate', () => {
+  const message = {
+    id: randomUUID(),
+    rideId,
+    sequence: 11,
+    authorMemberId: randomUUID(),
+    authorName: 'Pillion',
+    kind: 'preset',
+    text: 'Need a stop',
+    preset: 'need_stop',
+    mediaId: null,
+    durationSeconds: null,
+    coordinate: null,
+    capturedAt: now,
+    acceptedAt: now,
+  };
+  assert.deepEqual(parseChatMessage(message, rideId), message);
+  assert.throws(() => parseChatMessage({ ...message, preset: 'unknown' }, rideId));
+});
+test('voice messages require a private media identity and bounded duration', () => {
+  const voice = {
+    id: randomUUID(),
+    rideId,
+    sequence: 12,
+    authorMemberId: randomUUID(),
+    authorName: 'Rider',
+    kind: 'voice',
+    text: 'Voice note',
+    preset: null,
+    mediaId: randomUUID(),
+    durationSeconds: 4.2,
+    coordinate: null,
+    capturedAt: now,
+    acceptedAt: now,
+  };
+  assert.deepEqual(parseChatMessage(voice, rideId), voice);
+  assert.throws(() => parseChatMessage({ ...voice, durationSeconds: 31 }, rideId));
+  assert.throws(() => parseChatMessage({ ...voice, mediaId: null }, rideId));
 });
 test('pending drafts retry only during an active ride and within 24 hours', () => {
   const draft: Draft = {

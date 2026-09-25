@@ -1,4 +1,8 @@
 import { WarningPush, sealPush, validPushToken } from './warning-push.js';
+import { inspectVoice, probeVoice } from './voice-media.js';
+import type { MotionContext } from './ride-types.js';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { readMessages, sendMessage, type MessageEvent } from './messages.js';
 import {
   evaluateAlerts,
@@ -119,6 +123,8 @@ function decodeCursor(cursor: string | undefined, account: VerifiedAccount): Lis
 export class PostgresRides implements RideStore {
   private readonly pool: Pool;
   private readonly push: WarningPush | null;
+  private readonly voiceDir =
+    process.env.VOICE_MEDIA_DIR ?? resolve(process.cwd(), '../../data/voice');
 
   constructor(
     databaseUrl: string,
@@ -184,6 +190,73 @@ export class PostgresRides implements RideStore {
   }
   messages(account: VerifiedAccount, id: string, afterSequence: number, limit: number) {
     return this.manage(account, id, null, (context) => readMessages(context, afterSequence, limit));
+  }
+  async uploadVoice(
+    account: VerifiedAccount,
+    id: string,
+    upload: { mediaId: string; capturedAt: string; motion: MotionContext['motion']; bytes: Buffer },
+  ) {
+    inspectVoice(upload.bytes);
+    const filename = `${randomUUID()}.m4a`;
+    const path = resolve(this.voiceDir, filename);
+    let written = false;
+    try {
+      return await this.manage(
+        account,
+        id,
+        {
+          method: 'POST',
+          path: `/v1/rides/${id}/media/voice`,
+          key: upload.mediaId,
+          body: {
+            capturedAt: upload.capturedAt,
+            motion: upload.motion,
+            sha256: createHash('sha256').update(upload.bytes).digest('hex'),
+          },
+        },
+        async (context) => {
+          if (context.ride.state !== 'active' || context.own.left_at) throw notFound();
+          await mkdir(this.voiceDir, { recursive: true, mode: 0o700 });
+          await writeFile(path, upload.bytes, { flag: 'wx', mode: 0o600 });
+          written = true;
+          const durationSeconds = await probeVoice(path);
+          await context.client.query(
+            `INSERT INTO ridr.media_assets(id,ride_id,owner_member_id,kind,object_key,state,bytes,duration_seconds)
+           VALUES ($1,$2,$3,'voice',$4,'ready',$5,$6)`,
+            [upload.mediaId, id, context.own.id, filename, upload.bytes.length, durationSeconds],
+          );
+          return sendMessage(context, {
+            v: 1,
+            type: 'message.voice',
+            id: upload.mediaId,
+            rideId: id,
+            capturedAt: upload.capturedAt,
+            motion: upload.motion,
+            payload: { mediaId: upload.mediaId, motion: upload.motion },
+          });
+        },
+      );
+    } catch (error) {
+      if (written) await rm(path, { force: true }).catch(() => undefined);
+      throw error;
+    }
+  }
+  voiceContent(account: VerifiedAccount, id: string, mediaId: string) {
+    return this.manage(account, id, null, async (context) => {
+      if (context.ride.state !== 'active' || context.own.left_at) throw notFound();
+      const result = await context.client.query<{ object_key: string }>(
+        `SELECT object_key FROM ridr.media_assets
+         WHERE id=$1 AND ride_id=$2 AND kind='voice' AND state='ready'`,
+        [mediaId, id],
+      );
+      const key = result.rows[0]?.object_key;
+      if (!key || !/^[0-9a-f-]{36}\.m4a$/.test(key)) throw notFound();
+      try {
+        return await readFile(resolve(this.voiceDir, key));
+      } catch {
+        throw new ApiError(503, 'MEDIA_UNAVAILABLE', 'Voice note is temporarily unavailable.');
+      }
+    });
   }
   async pushStatus(account: VerifiedAccount, deviceId: string) {
     return this.transaction(account, async (client) => {
