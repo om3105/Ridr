@@ -124,6 +124,8 @@ A pairing QR establishes both identities and consent; a rest-stop scan is a new 
 
 ## Messages, media and history
 
+Day 14's implemented voice path uses `POST /rides/{rideId}/media/voice` with one `audio/mp4` AAC file (maximum 5 MB), `mediaId`, `capturedAt`, and JSON `motion` form fields; `Idempotency-Key` equals `mediaId`. The API validates the actual container, codec and duration (maximum 30 seconds), then commits the ready media row and ordered voice message together. `GET /rides/{rideId}/media/{mediaId}/content` rechecks active membership and serves private bytes with `Cache-Control: private, no-store`. The generic signed-upload/photo flow below remains a later design contract, not a deployed Day 14 endpoint.
+
 | Method/path | Request → response | Authorization, concurrency and failure rules |
 |---|---|---|
 | `POST /rides/{rideId}/events` | A client envelope from `events.schema.json` → `Ack` | HTTP fallback for the exact same real-time command handler and event ID. Header key must equal event `id`; path must equal `rideId`; no revision header. See sequencing/SOS rules below. |
