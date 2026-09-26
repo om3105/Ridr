@@ -1,7 +1,9 @@
 import { RideWarnings } from './RideWarnings';
+import { SosAlerts } from '../sos/SosAlerts';
+import { stageSosPosition } from '../sos/capture';
 import { PresetControls } from '../chat/PresetControls';
 import { getMessages, type ChatMessage } from '../chat/api';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { Button, Notice, Page, styles } from '../auth/components';
@@ -28,6 +30,11 @@ export function GroupRideMap({
 }) {
   const live = useGroupLocations(id, startedAt);
   const group = live.snapshot ? projectGroup(live.snapshot, live.now) : null;
+  const ownPosition = live.snapshot?.members.find(
+    (member) => member.id === live.snapshot?.ownMemberId,
+  )?.sharingEnabled
+    ? live.snapshot.items.find((item) => item.memberId === live.snapshot?.ownMemberId)?.position
+    : null;
   const passengerByRider = new Map(
     live.snapshot?.pairs.map((pair) => [
       pair.riderMemberId,
@@ -36,6 +43,7 @@ export function GroupRideMap({
     ]) ?? [],
   );
   const { run } = useRides();
+  const router = useRouter();
   const [pins, setPins] = useState<ChatMessage[]>([]);
   const [recentPresets, setRecentPresets] = useState<ChatMessage[]>([]);
   const lastPinSequence = useRef(0);
@@ -83,6 +91,24 @@ export function GroupRideMap({
     <Page>
       <Text style={styles.eyebrow}>GROUP MAP</Text>
       <Text style={styles.title}>{name}</Text>
+      <Button
+        label="SOS — alert ride members"
+        onPress={() => {
+          const position =
+            ownPosition && Date.now() - Date.parse(ownPosition.recordedAt) <= 600000
+              ? ownPosition
+              : null;
+          stageSosPosition(id, position);
+          router.push({
+            pathname: '/ride',
+            params: { id, view: 'sos', sos: 'start' },
+          });
+        }}
+      />
+      <Link href={{ pathname: '/ride', params: { id, view: 'sos' } }} style={styles.link}>
+        View ride SOS alerts →
+      </Link>
+      <SosAlerts rideId={id} />
       {offline && (
         <Notice>
           Ride status is unconfirmed. Saved quick messages will be checked before sending when the

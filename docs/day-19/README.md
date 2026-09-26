@@ -1,0 +1,11 @@
+# Day 19 — manual SOS handover
+
+Manual SOS is available on an active ride's group map and chat. One tap saves an event locally and starts delivery without a stationary check, location permission prompt, or prior push permission. The map attaches only the sender's already shared recent position when sharing is on; chat may send without a position. The server records the reporting member and device, acceptance time, and the pair as it stood at the original capture time. Two paired members can report separately; their accepted events link by pair and time.
+
+The SOS screen distinguishes a saved request from server acceptance and shows each device receipt separately. A lost response leaves delivery unconfirmed. The app checks the original event ID before retrying and asks for an explicit fresh decision after 60 seconds. A pending event remains in device secure storage across app restarts. Current ride members see active alerts while the map or chat is open; fetching a confirmed alert records a device receipt. A device receipt does not mean a person read or acted on it. The reporter can say “I'm okay”; the leader can post a coordination closure reason. Neither action deletes the SOS or contacts emergency services.
+
+When a recipient has opted into push notifications and the API has `PUSH_TOKEN_KEY`, the server sends a minimal background hint through Expo Push. It contains ride and SOS IDs, without names or coordinates. Expo/provider acceptance is tracked separately from app device receipts. Provider failures or uncertain submission are not reported as human acknowledgement.
+
+Verification completed locally: migration and database integrity, API management integration including idempotency, pairing changes, authorization, delayed reconfirmation, device receipt and resolution, mobile request/reconciliation tests, project lint/type checks, and Android/iOS/web export. A physical device and a second signed-in member are still needed to measure the normal-network 3-second delivery target, push receipt and notification-opening behavior, and offline recovery on actual phones. No phone was connected during this handover.
+
+Automatic crash detection and external status links remain later milestones.

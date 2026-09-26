@@ -1,6 +1,7 @@
 import { TrailView } from '../src/group-map/TrailView';
 import { RideChat } from '../src/chat/RideChat';
 import { GroupRideMap } from '../src/group-map/GroupRideMap';
+import { SosPanel } from '../src/sos/SosPanel';
 import { stopTracking } from '../src/location/tracker';
 import Constants from 'expo-constants';
 import { randomUUID } from 'expo-crypto';
@@ -27,7 +28,7 @@ import { RideAccess, useRides } from '../src/rides/provider';
 import { useScreenTask } from '../src/rides/use-screen-task';
 
 export default function RideScreen() {
-  const { id, view, member, lat, lon, focusLat, focusLon } = useLocalSearchParams<{
+  const { id, view, member, lat, lon, focusLat, focusLon, sos } = useLocalSearchParams<{
     id?: string | string[];
     view?: string;
     member?: string;
@@ -35,6 +36,7 @@ export default function RideScreen() {
     lon?: string;
     focusLat?: string;
     focusLon?: string;
+    sos?: string;
   }>();
   return (
     <RideAccess>
@@ -53,6 +55,8 @@ export default function RideScreen() {
             : null
         }
         showChat={view === 'chat'}
+        showSos={view === 'sos'}
+        autoStartSos={view === 'sos' && sos === 'start'}
         mapFocus={
           focusLat !== undefined &&
           focusLon !== undefined &&
@@ -76,6 +80,8 @@ function Lobby({
   trailMember,
   chatPin,
   showChat,
+  showSos,
+  autoStartSos,
   mapFocus,
 }: {
   id: string;
@@ -83,6 +89,8 @@ function Lobby({
   trailMember?: string;
   chatPin: { lat: number; lon: number } | null;
   showChat: boolean;
+  showSos: boolean;
+  autoStartSos: boolean;
   mapFocus: { lat: number; lon: number } | null;
 }) {
   const { run, invitations, rememberInvitation, recentRides, rememberRide } = useRides();
@@ -265,6 +273,7 @@ function Lobby({
       : offline
         ? recentRides[id]
         : null;
+  if (showSos) return <SosPanel rideId={id} autoStart={autoStartSos} />;
   if (showChat) return <RideChat id={id} pin={chatPin} />;
   if (management && trailMember)
     return (

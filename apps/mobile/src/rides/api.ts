@@ -327,6 +327,7 @@ export async function request<T>(
     body?: unknown;
     form?: FormData;
     deviceId?: string;
+    sosGrantId?: string;
     idempotencyKey?: string;
     revision?: number;
     parse: (value: unknown) => T;
@@ -361,6 +362,9 @@ export async function request<T>(
         Authorization: `Bearer ${options.accessToken}`,
         Accept: 'application/json',
         ...(requestOptions.deviceId ? { 'X-Device-Id': requestOptions.deviceId } : {}),
+        ...(requestOptions.sosGrantId
+          ? { 'X-SOS-Reconfirmation-Grant': requestOptions.sosGrantId }
+          : {}),
         ...(requestOptions.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(requestOptions.idempotencyKey
           ? { 'Idempotency-Key': requestOptions.idempotencyKey }

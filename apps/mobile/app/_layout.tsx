@@ -3,11 +3,13 @@ import { StatusBar } from 'expo-status-bar';
 import { colors } from '../src/theme';
 import { AuthProvider } from '../src/auth/provider';
 import { RideProvider } from '../src/rides/provider';
+import { SosNotificationNavigation } from '../src/sos/SosNotificationNavigation';
 
 export default function RootLayout() {
   return (
     <AuthProvider>
       <RideProvider>
+        <SosNotificationNavigation />
         <StatusBar style="dark" />
         <Stack
           screenOptions={{

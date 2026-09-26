@@ -6,10 +6,10 @@ import { registerDevice } from '../location/api';
 import { request, type RideClientOptions } from '../rides/api';
 // The authenticated live map owns foreground warnings; suppress duplicate OS banners.
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: false,
-    shouldShowList: false,
-    shouldPlaySound: false,
+  handleNotification: async (notification) => ({
+    shouldShowBanner: notification.request.content.data?.kind === 'sos',
+    shouldShowList: notification.request.content.data?.kind === 'sos',
+    shouldPlaySound: notification.request.content.data?.kind === 'sos',
     shouldSetBadge: false,
   }),
 });
@@ -42,12 +42,22 @@ async function token() {
   if (!projectId) throw new Error('The Expo project is not configured.');
   return (await Notifications.getExpoPushTokenAsync({ projectId })).data;
 }
+async function ensureChannels() {
+  if (Platform.OS === 'android') {
+    await Promise.all([
+      Notifications.setNotificationChannelAsync('ride-warnings', {
+        name: 'Ride warnings',
+        importance: Notifications.AndroidImportance.HIGH,
+      }),
+      Notifications.setNotificationChannelAsync('ride-sos', {
+        name: 'Ride SOS',
+        importance: Notifications.AndroidImportance.MAX,
+      }),
+    ]);
+  }
+}
 export async function enableWarningPush(options: RideClientOptions, deviceId: string) {
-  if (Platform.OS === 'android')
-    await Notifications.setNotificationChannelAsync('ride-warnings', {
-      name: 'Ride warnings',
-      importance: Notifications.AndroidImportance.HIGH,
-    });
+  await ensureChannels();
   const permission = await Notifications.requestPermissionsAsync();
   if (!permission.granted)
     throw new Error(
@@ -68,6 +78,7 @@ export async function renewWarningPush(options: RideClientOptions, deviceId: str
   renewing = true;
   try {
     if ((await SecureStore.getItemAsync(preference(options.userId))) !== 'enabled') return;
+    await ensureChannels();
     const permission = await Notifications.getPermissionsAsync();
     if (!permission.granted) {
       await SecureStore.deleteItemAsync(preference(options.userId));

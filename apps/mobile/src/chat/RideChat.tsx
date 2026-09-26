@@ -1,6 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
-import { Link, useFocusEffect } from 'expo-router';
+import { Link, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Text, View } from 'react-native';
 import { io } from 'socket.io-client';
@@ -19,6 +19,8 @@ import {
 } from './api';
 import { draftRecovery } from './recovery';
 import { VoiceComposer } from './VoiceComposer';
+import { SosAlerts } from '../sos/SosAlerts';
+import { stageSosPosition } from '../sos/capture';
 import {
   enqueue,
   listPending,
@@ -28,6 +30,7 @@ import {
 } from './storage';
 
 export function RideChat({ id, pin }: { id: string; pin: { lat: number; lon: number } | null }) {
+  const router = useRouter();
   const auth = useAuth();
   const { run } = useRides();
   const motion = useMotionCheck();
@@ -293,6 +296,19 @@ export function RideChat({ id, pin }: { id: string; pin: { lat: number; lon: num
     <Page>
       <Text style={styles.eyebrow}>RIDE CHAT</Text>
       <Text style={styles.title}>Ride messages</Text>
+      {canSend && (
+        <Button
+          label="SOS — alert ride members"
+          onPress={() => {
+            stageSosPosition(id, null);
+            router.push({ pathname: '/ride', params: { id, view: 'sos', sos: 'start' } });
+          }}
+        />
+      )}
+      <Link href={{ pathname: '/ride', params: { id, view: 'sos' } }} style={styles.link}>
+        View ride SOS alerts →
+      </Link>
+      <SosAlerts rideId={id} />
       <Notice>{notice}</Notice>
       <Text style={styles.detail}>
         Text and pins are for coordination. Do not type while moving. Quick presets are available on
