@@ -1,6 +1,8 @@
+import { existsSync } from 'node:fs';
 import type { ExpoConfig } from 'expo/config';
 
 const isDevelopment = process.env.APP_VARIANT !== 'production';
+const googleServicesFile = process.env.GOOGLE_SERVICES_JSON ?? './google-services.json';
 
 const config: ExpoConfig = {
   name: isDevelopment ? 'Ridr Dev' : 'Ridr',
@@ -19,8 +21,9 @@ const config: ExpoConfig = {
   },
   android: {
     package: isDevelopment ? 'com.ridr.app.dev' : 'com.ridr.app',
-    ...(isDevelopment
-      ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json' }
+    ...(isDevelopment &&
+    (process.env.GOOGLE_SERVICES_JSON || existsSync(googleServicesFile))
+      ? { googleServicesFile }
       : {}),
     permissions: [],
   },

@@ -217,7 +217,7 @@ async function main() {
       .flatMap((output) => output.rows ?? [])
       .flatMap(Object.values)
       .find((value) => typeof value === 'string' && value.startsWith('PASS: '));
-    assert.equal(integrityMessage, 'PASS: 24 database integrity cases');
+    assert.equal(integrityMessage, 'PASS: 25 database integrity cases');
     console.log(integrityMessage);
   } finally {
     await Promise.allSettled([api.query('ROLLBACK'), owner.query('ROLLBACK')]);
