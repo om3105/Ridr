@@ -87,7 +87,7 @@ async function main() {
           "SELECT count(*)::int AS count FROM pg_tables WHERE schemaname = 'ridr' AND tablename <> 'schema_migrations'",
         )
       ).rows[0].count,
-      31,
+      32,
     );
     assert.equal(
       (
@@ -190,7 +190,7 @@ async function main() {
     }
     await owner.query('ROLLBACK');
     console.log(
-      'PASS: 31 domain tables, runtime CRUD, separate ownership and private role boundaries.',
+      'PASS: 32 domain tables, runtime CRUD, separate ownership and private role boundaries.',
     );
 
     const {

@@ -28,6 +28,7 @@ import type {
   ProposalKind,
 } from './ride-types.js';
 import { RideLimiter, rateLimited } from './ride-limits.js';
+import { parseSosRequest } from './ride-sos.js';
 
 export const RIDES = Symbol('RIDES');
 export interface RideServices {
@@ -255,6 +256,120 @@ function envelope<T>(data: T, response: Response, revision?: number) {
 @Controller()
 export class RideController {
   constructor(@Inject(RIDES) private readonly services: RideServices | null) {}
+
+  @Get('rides/:rideId/sos')
+  async sosList(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    return envelope(await this.services!.store.sosList(account, rideId(id)), response);
+  }
+
+  @Get('rides/:rideId/sos/:eventId')
+  async sos(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('eventId') eventId: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    return envelope(
+      {
+        status: 'accepted',
+        sos: await this.services!.store.sos(account, rideId(id), rideId(eventId)),
+      },
+      response,
+    );
+  }
+
+  @Post('rides/:rideId/sos/:eventId/reconfirm')
+  async reconfirmSos(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('eventId') eventId: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    const value = object(body);
+    exact(value, ['event', 'confirmedAt']);
+    const event = parseSosRequest(value.event);
+    if (
+      event.id !== rideId(eventId) ||
+      event.rideId !== rideId(id) ||
+      typeof value.confirmedAt !== 'string' ||
+      !Number.isFinite(Date.parse(value.confirmedAt))
+    )
+      throw new ApiError(400, 'INVALID_REQUEST', 'Invalid SOS reconfirmation.');
+    return envelope(
+      await this.services!.store.reconfirmSos(
+        account,
+        rideId(id),
+        event,
+        value.confirmedAt,
+        commandKey(request.header('idempotency-key')),
+      ),
+      response,
+    );
+  }
+
+  @Post('rides/:rideId/sos/:eventId/resolve')
+  async resolveSos(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('eventId') eventId: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    const value = object(body);
+    if (value.resolution === 'reporter_okay') exact(value, ['id', 'resolution']);
+    else if (value.resolution === 'coordination_closed')
+      exact(value, ['id', 'resolution', 'reason']);
+    else throw new ApiError(400, 'INVALID_REQUEST', 'Choose a valid SOS resolution.');
+    const updateId = rideId(String(value.id));
+    if (
+      commandKey(request.header('idempotency-key')) !== updateId ||
+      (value.resolution === 'coordination_closed' &&
+        (typeof value.reason !== 'string' || !value.reason.trim() || value.reason.length > 500))
+    )
+      throw new ApiError(400, 'INVALID_REQUEST', 'Invalid SOS resolution.');
+    return envelope(
+      await this.services!.store.resolveSos(account, rideId(id), rideId(eventId), {
+        id: updateId,
+        kind: value.resolution,
+        reason: value.resolution === 'coordination_closed' ? (value.reason as string).trim() : null,
+      }),
+      response,
+    );
+  }
+
+  @Post('rides/:rideId/sos/:eventId/receipts')
+  async acknowledgeSos(
+    @Req() request: Request,
+    @Param('rideId') id: string,
+    @Param('eventId') eventId: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const account = await this.actor(request, response);
+    const value = object(body);
+    exact(value, ['deviceId', 'receivedAt']);
+    if (typeof value.receivedAt !== 'string' || !Number.isFinite(Date.parse(value.receivedAt)))
+      throw new ApiError(400, 'INVALID_REQUEST', 'Invalid receipt time.');
+    return envelope(
+      await this.services!.store.acknowledgeSos(
+        account,
+        rideId(id),
+        rideId(eventId),
+        rideId(String(value.deviceId)),
+        value.receivedAt,
+      ),
+      response,
+    );
+  }
 
   @Get('rides/:rideId/headcounts/current')
   async currentHeadcount(

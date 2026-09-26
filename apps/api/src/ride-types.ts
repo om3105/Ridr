@@ -1,5 +1,6 @@
 import type { AlertSettings } from './ride-alerts.js';
 import type { MessageEvent, RideMessage } from './messages.js';
+import type { SosRequest, SosView } from './ride-sos.js';
 import type { TrailPage } from './trails.js';
 import type { LocationSample, LocationAck, LiveLocations } from './location.js';
 import type { RouteChange, SavedRoute } from './route-planning.js';
@@ -94,6 +95,37 @@ export interface RotateInvite extends Partial<MotionContext> {
 }
 
 export interface RideStore {
+  sos(account: VerifiedAccount, rideId: string, eventId: string): Promise<SosView>;
+  sosList(account: VerifiedAccount, rideId: string): Promise<SosView[]>;
+  sendSos(
+    account: VerifiedAccount,
+    event: SosRequest,
+    deviceId: string,
+    grantId?: string,
+  ): Promise<SosView>;
+  reconfirmSos(
+    account: VerifiedAccount,
+    rideId: string,
+    event: SosRequest,
+    confirmedAt: string,
+    grantId: string,
+  ): Promise<{
+    accepted: SosView | null;
+    grant: { grantId: string; eventId: string; digest: string; expiresAt: string } | null;
+  }>;
+  resolveSos(
+    account: VerifiedAccount,
+    rideId: string,
+    sosId: string,
+    change: { id: string; kind: 'reporter_okay' | 'coordination_closed'; reason: string | null },
+  ): Promise<SosView>;
+  acknowledgeSos(
+    account: VerifiedAccount,
+    rideId: string,
+    sosId: string,
+    deviceId: string,
+    receivedAt: string,
+  ): Promise<SosView>;
   headcount(account: VerifiedAccount, rideId: string): Promise<HeadcountRound | null>;
   beginHeadcount(
     account: VerifiedAccount,

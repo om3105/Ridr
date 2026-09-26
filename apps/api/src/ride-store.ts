@@ -1,4 +1,5 @@
 import { WarningPush, sealPush, validPushToken } from './warning-push.js';
+import { SosPush } from './sos-push.js';
 import { inspectVoice, probeVoice } from './voice-media.js';
 import type { MotionContext } from './ride-types.js';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -31,6 +32,8 @@ import * as lifecycle from './ride-management.js';
 import * as pairing from './ride-pairing.js';
 import * as readiness from './ride-readiness.js';
 import * as headcount from './ride-headcount.js';
+import * as sos from './ride-sos.js';
+import type { SosRequest } from './ride-sos.js';
 import {
   integer,
   rideProjection,
@@ -134,6 +137,7 @@ function decodeCursor(cursor: string | undefined, account: VerifiedAccount): Lis
 export class PostgresRides implements RideStore {
   private readonly pool: Pool;
   private readonly push: WarningPush | null;
+  private readonly sosPush: SosPush | null;
   private readonly voiceDir =
     process.env.VOICE_MEDIA_DIR ?? resolve(process.cwd(), '../../data/voice');
 
@@ -159,7 +163,9 @@ export class PostgresRides implements RideStore {
           this.locations(account, id),
         )
       : null;
+    this.sosPush = pushKey ? new SosPush(this.pool, Buffer.from(pushKey, 'base64')) : null;
     this.push?.start();
+    this.sosPush?.start();
   }
 
   async registerPush(account: VerifiedAccount, deviceId: string, token: string | null) {
@@ -197,6 +203,73 @@ export class PostgresRides implements RideStore {
         body: event,
       },
       (context) => sendMessage(context, event),
+    );
+  }
+  sos(account: VerifiedAccount, rideId: string, eventId: string) {
+    return this.manage(account, rideId, null, (context) => sos.readSos(context, eventId));
+  }
+  sosList(account: VerifiedAccount, rideId: string) {
+    return this.manage(account, rideId, null, sos.listSos);
+  }
+  sendSos(account: VerifiedAccount, event: SosRequest, deviceId: string, grantId?: string) {
+    return this.manage(
+      account,
+      event.rideId,
+      {
+        method: 'POST',
+        path: `/v1/rides/${event.rideId}/events`,
+        key: event.id,
+        body: event,
+      },
+      (context) => sos.sendSos(context, event, deviceId, grantId),
+    );
+  }
+  reconfirmSos(
+    account: VerifiedAccount,
+    rideId: string,
+    event: SosRequest,
+    confirmedAt: string,
+    grantId: string,
+  ) {
+    return this.manage(
+      account,
+      rideId,
+      {
+        method: 'POST',
+        path: `/v1/rides/${rideId}/sos/${event.id}/reconfirm`,
+        key: grantId,
+        body: { event, confirmedAt },
+      },
+      (context) => sos.reconfirmSos(context, event, grantId, confirmedAt),
+    );
+  }
+  resolveSos(
+    account: VerifiedAccount,
+    rideId: string,
+    sosId: string,
+    change: { id: string; kind: 'reporter_okay' | 'coordination_closed'; reason: string | null },
+  ) {
+    return this.manage(
+      account,
+      rideId,
+      {
+        method: 'POST',
+        path: `/v1/rides/${rideId}/sos/${sosId}/resolve`,
+        key: change.id,
+        body: change,
+      },
+      (context) => sos.resolveSos(context, sosId, change),
+    );
+  }
+  acknowledgeSos(
+    account: VerifiedAccount,
+    rideId: string,
+    sosId: string,
+    deviceId: string,
+    receivedAt: string,
+  ) {
+    return this.manage(account, rideId, null, (context) =>
+      sos.acknowledgeSos(context, sosId, deviceId, receivedAt),
     );
   }
   messages(account: VerifiedAccount, id: string, afterSequence: number, limit: number) {
@@ -1315,6 +1388,7 @@ export class PostgresRides implements RideStore {
 
   async close(): Promise<void> {
     await this.push?.close();
+    await this.sosPush?.close();
     await this.pool.end();
   }
 }

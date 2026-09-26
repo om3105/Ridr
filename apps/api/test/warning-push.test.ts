@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { openPush, sealPush, validPushToken, pushMessage } from '../src/warning-push.js';
+import { sosPushMessage } from '../src/sos-push.js';
 test('push registration encryption authenticates its device and ciphertext', () => {
   const key = randomBytes(32),
     device = randomUUID(),
@@ -31,4 +32,10 @@ test('push tokens are bounded and previews contain no member names or positions'
     'warningId',
   ]);
   assert.equal(pushMessage('token', 'ride', 'warning').ttl, 30);
+});
+test('SOS push carries only a ride and event pointer, not member identity or location', () => {
+  const message = sosPushMessage('token', randomUUID(), randomUUID());
+  assert.deepEqual(Object.keys(message.data), ['kind', 'rideId', 'sosId']);
+  assert.equal(message.channelId, 'ride-sos');
+  assert.equal(JSON.stringify(message).includes('Private name'), false);
 });

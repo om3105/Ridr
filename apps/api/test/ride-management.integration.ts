@@ -1,6 +1,7 @@
 import { WarningPush, sealPush } from '../src/warning-push.js';
 import { parseSample } from '../src/location.js';
 import { parseMessage } from '../src/messages.js';
+import { parseSosRequest } from '../src/ride-sos.js';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -221,6 +222,16 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
       await client.query('DELETE FROM ridr.command_receipts WHERE actor_id = ANY($1::uuid[])', [
         actorIds,
       ]);
+      await client.query(
+        'DELETE FROM ridr.device_acknowledgements WHERE event_id IN (SELECT id FROM ridr.outbox_events WHERE ride_id=ANY($1::uuid[]))',
+        [rideIds],
+      );
+      await client.query(
+        'DELETE FROM ridr.sos_push_deliveries WHERE sos_id IN (SELECT id FROM ridr.sos_events WHERE ride_id=ANY($1::uuid[]))',
+        [rideIds],
+      );
+      await client.query('DELETE FROM ridr.sos_updates WHERE ride_id=ANY($1::uuid[])', [rideIds]);
+      await client.query('DELETE FROM ridr.sos_events WHERE ride_id=ANY($1::uuid[])', [rideIds]);
       for (const table of [
         'outbox_events',
         'messages',
@@ -2087,4 +2098,143 @@ test('PostgreSQL ride management preserves lifecycle, consent and concurrent aut
     );
     assert.deepEqual((await rides.headcount(leader, id))?.confirmedPairIds, [latePair.pair.id]);
   });
+  await t.test(
+    'manual SOS keeps pair identity, separate reporters, device receipts and resolution',
+    async () => {
+      const leader = account(),
+        pillion = account(),
+        outsider = account();
+      const created = await create(leader),
+        id = created.ride.id;
+      const joined = await join(pillion, created, 'pillion');
+      const pair = await pairFixture(created, created.membership, joined.membership);
+      await rides.start(leader, id, await startChange(leader, id));
+      const leaderDevice = randomUUID(),
+        pillionDevice = randomUUID();
+      await rides.registerDevice(leader, leaderDevice, 'android');
+      await rides.registerDevice(pillion, pillionDevice, 'android');
+      const event = (actorId: string) =>
+        parseSosRequest({
+          v: 1,
+          type: 'sos.request',
+          id: actorId,
+          rideId: id,
+          capturedAt: new Date().toISOString(),
+          payload: { kind: 'manual', position: null },
+        });
+      const pillionEvent = event(randomUUID());
+      const first = await rides.sendSos(pillion, pillionEvent, pillionDevice);
+      assert.equal(first.reporterMemberId, joined.membership.id);
+      assert.equal(first.pairSnapshot?.pairId, pair.pairId);
+      assert.deepEqual(first.deviceReceipts, []);
+      assert.deepEqual(await rides.sendSos(pillion, pillionEvent, pillionDevice), first);
+      await assert.rejects(
+        rides.sendSos(
+          pillion,
+          { ...pillionEvent, capturedAt: new Date(Date.now() + 1).toISOString() },
+          pillionDevice,
+        ),
+        rejectsCode('IDEMPOTENCY_CONFLICT'),
+      );
+      await assert.rejects(rides.sos(outsider, id, pillionEvent.id), rejectsCode('NOT_FOUND'));
+      const leaderEvent = event(randomUUID());
+      const second = await rides.sendSos(leader, leaderEvent, leaderDevice);
+      assert.deepEqual(second.linkedSosIds, [pillionEvent.id]);
+      assert.deepEqual((await rides.sos(pillion, id, pillionEvent.id)).linkedSosIds, [
+        leaderEvent.id,
+      ]);
+      assert.equal((await rides.sosList(leader, id)).length, 2);
+      await pool.query(
+        "UPDATE ridr.rides SET created_at=created_at-interval '2 minutes',started_at=started_at-interval '2 minutes' WHERE id=$1",
+        [id],
+      );
+      await pool.query(
+        "UPDATE ridr.memberships SET joined_at=joined_at-interval '2 minutes' WHERE ride_id=$1",
+        [id],
+      );
+      const delayed = parseSosRequest({
+        v: 1,
+        type: 'sos.request',
+        id: randomUUID(),
+        rideId: id,
+        capturedAt: new Date(Date.now() - 65000).toISOString(),
+        payload: { kind: 'manual', position: null },
+      });
+      await assert.rejects(rides.sos(leader, id, delayed.id), rejectsCode('SOS_NOT_ACCEPTED'));
+      await assert.rejects(
+        rides.sendSos(leader, delayed, leaderDevice),
+        rejectsCode('RECONFIRMATION_REQUIRED'),
+      );
+      const grantId = randomUUID();
+      const grant = await rides.reconfirmSos(
+        leader,
+        id,
+        delayed,
+        new Date().toISOString(),
+        grantId,
+      );
+      assert.equal(grant.accepted, null);
+      assert.equal(grant.grant?.grantId, grantId);
+      const delayedAccepted = await rides.sendSos(leader, delayed, leaderDevice, grantId);
+      assert.equal(delayedAccepted.id, delayed.id);
+      assert.equal((await rides.sendSos(leader, delayed, leaderDevice)).id, delayed.id);
+      assert.equal((await rides.sosList(leader, id)).length, 3);
+      await assert.rejects(
+        rides.acknowledgeSos(outsider, id, pillionEvent.id, leaderDevice, new Date().toISOString()),
+        rejectsCode('NOT_FOUND'),
+      );
+      const acknowledged = await rides.acknowledgeSos(
+        leader,
+        id,
+        pillionEvent.id,
+        leaderDevice,
+        new Date().toISOString(),
+      );
+      assert.equal(acknowledged.deviceReceipts.length, 1);
+      assert.equal(
+        (
+          await rides.acknowledgeSos(
+            leader,
+            id,
+            pillionEvent.id,
+            leaderDevice,
+            new Date().toISOString(),
+          )
+        ).deviceReceipts.length,
+        1,
+      );
+      await assert.rejects(
+        rides.resolveSos(leader, id, pillionEvent.id, {
+          id: randomUUID(),
+          kind: 'reporter_okay',
+          reason: null,
+        }),
+        rejectsCode('FORBIDDEN'),
+      );
+      const okay = await rides.resolveSos(pillion, id, pillionEvent.id, {
+        id: randomUUID(),
+        kind: 'reporter_okay',
+        reason: null,
+      });
+      assert.equal(okay.resolution?.kind, 'reporter_okay');
+      const closed = await rides.resolveSos(leader, id, pillionEvent.id, {
+        id: randomUUID(),
+        kind: 'coordination_closed',
+        reason: 'Group coordinating help',
+      });
+      assert.equal(closed.resolution?.kind, 'coordination_closed');
+      await rides.unpair(leader, id, pair.pairId, { ...motion(), ...command() });
+      assert.equal(
+        (await rides.sos(leader, id, pillionEvent.id)).pairSnapshot?.pairId,
+        pair.pairId,
+      );
+      await rides.end(leader, id, {
+        ...command(),
+        reason: 'completed',
+        capturedAt: new Date().toISOString(),
+        consentEpoch: 0,
+      });
+      assert.equal((await rides.sos(pillion, id, pillionEvent.id)).id, pillionEvent.id);
+    },
+  );
 });
