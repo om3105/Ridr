@@ -37,6 +37,13 @@ test('HTTP health, CORS, safe request logs, and real-time transport work togethe
   await app.listen(0, '127.0.0.1');
   const url = await app.getUrl();
 
+  const viewer = await fetch(`${url}/v1/status#fragment-is-not-sent`);
+  assert.equal(viewer.status, 200);
+  assert.equal(viewer.headers.get('cache-control'), 'no-store');
+  assert.equal(viewer.headers.get('referrer-policy'), 'no-referrer');
+  assert.match(viewer.headers.get('content-security-policy') ?? '', /default-src 'none'/);
+  assert.match(await viewer.text(), /history\.replaceState/);
+
   const live = await fetch(`${url}/v1/health/live?token=private-query`, {
     headers: { Authorization: 'Bearer private-token', Origin: 'http://localhost:8081' },
   });

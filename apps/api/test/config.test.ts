@@ -11,6 +11,7 @@ test('configuration uses bounded local defaults', () => {
     port: 3000,
     databaseUrl: valid.DATABASE_URL,
     corsOrigins: [],
+    statusViewerOrigin: 'http://127.0.0.1:3000',
     routing: {},
     rideLimits: { accountPerMinute: 30, ipPerMinute: 120 },
   });
@@ -26,6 +27,7 @@ test('accepts explicit runtime settings and deduplicates exact origins', () => {
   });
   assert.equal(config.port, 3001);
   assert.equal(config.host, '0.0.0.0');
+  assert.equal(config.statusViewerOrigin, 'http://127.0.0.1:3001');
   assert.deepEqual(config.corsOrigins, ['http://localhost:8081', 'https://test.example']);
 });
 
@@ -38,6 +40,21 @@ test('rejects invalid ports, wildcard origins, and ambiguous configuration', () 
   }
   assert.throws(() => readConfig({ ...valid, NODE_ENV: 'staging' }), /NODE_ENV/);
   assert.throws(() => readConfig({ ...valid, API_HOST: 'localhost/path' }), /API_HOST/);
+  for (const origin of [
+    'https://viewer.test/path',
+    'https://viewer.test?token=secret',
+    'http://name:pass@viewer.test',
+  ])
+    assert.throws(
+      () => readConfig({ ...valid, STATUS_VIEWER_ORIGIN: origin }),
+      /STATUS_VIEWER_ORIGIN/,
+    );
+  assert.throws(() => readConfig({ ...valid, NODE_ENV: 'production' }), /STATUS_VIEWER_ORIGIN/);
+  assert.throws(
+    () =>
+      readConfig({ ...valid, NODE_ENV: 'production', STATUS_VIEWER_ORIGIN: 'http://viewer.test' }),
+    /STATUS_VIEWER_ORIGIN/,
+  );
   for (const limit of ['0', '-1', '1.5', '1e3', '10001', '']) {
     assert.throws(
       () => readConfig({ ...valid, INVITE_ACCOUNT_PER_MINUTE: limit }),
@@ -78,6 +95,7 @@ test('auth configuration is optional but complete when enabled, with shared secr
     readConfig({
       ...valid,
       NODE_ENV: 'production',
+      STATUS_VIEWER_ORIGIN: 'https://viewer.test',
       SUPABASE_AUTH_URL: 'https://example.supabase.co/auth/v1',
       AUTH_DATABASE_URL: local.AUTH_DATABASE_URL,
     }).auth,
@@ -90,6 +108,7 @@ test('auth configuration is optional but complete when enabled, with shared secr
         ...local,
         SUPABASE_AUTH_URL: 'https://example.supabase.co/auth/v1',
         NODE_ENV: 'production',
+        STATUS_VIEWER_ORIGIN: 'https://viewer.test',
       }),
     /SUPABASE_JWT_SECRET/,
   );

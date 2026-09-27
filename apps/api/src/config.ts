@@ -10,6 +10,7 @@ export interface ApiConfig {
   routing?: Partial<Record<'cycling' | 'driving', string>>;
   auth?: AuthConfig;
   pushTokenKey?: string;
+  statusViewerOrigin: string;
 }
 
 export interface AuthConfig {
@@ -144,6 +145,24 @@ export function readConfig(env: NodeJS.ProcessEnv): ApiConfig {
       Buffer.from(pushTokenKey, 'base64').length !== 32)
   )
     throw new Error('PUSH_TOKEN_KEY must be a base64 encoded 32-byte encryption key.');
+  const statusViewerOrigin = env.STATUS_VIEWER_ORIGIN ?? `http://127.0.0.1:${port}`;
+  try {
+    const viewer = new URL(statusViewerOrigin);
+    if (
+      !['http:', 'https:'].includes(viewer.protocol) ||
+      (environment === 'production' && viewer.protocol !== 'https:') ||
+      viewer.origin !== statusViewerOrigin ||
+      viewer.username ||
+      viewer.password ||
+      viewer.search ||
+      viewer.hash
+    )
+      throw new Error();
+  } catch {
+    throw new Error(
+      'STATUS_VIEWER_ORIGIN must be a plain HTTP(S) origin; production requires HTTPS.',
+    );
+  }
   return {
     ...(pushTokenKey ? { pushTokenKey } : {}),
     environment: environment as ApiConfig['environment'],
@@ -152,6 +171,7 @@ export function readConfig(env: NodeJS.ProcessEnv): ApiConfig {
     databaseUrl,
     corsOrigins: [...new Set(corsOrigins)],
     rideLimits,
+    statusViewerOrigin,
     routing,
     ...(auth ? { auth } : {}),
   };
