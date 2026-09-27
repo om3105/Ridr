@@ -23,6 +23,7 @@ import type { RideStore } from './ride-types.js';
 import { PostgresRides } from './ride-store.js';
 import { RideLimiter } from './ride-limits.js';
 import { STATUS_LINKS, StatusLinkController, StatusLinkStore } from './status-links.js';
+import { RIDE_SUMMARY, RideSummaryController, RideSummaryStore } from './ride-summary.js';
 
 @Injectable()
 class DatabaseLifecycle implements OnApplicationShutdown {
@@ -61,6 +62,14 @@ class StatusLinkLifecycle implements OnApplicationShutdown {
   constructor(@Inject(STATUS_LINKS) private readonly status: { store: StatusLinkStore } | null) {}
   async onApplicationShutdown(): Promise<void> {
     await this.status?.store.close();
+  }
+}
+
+@Injectable()
+class RideSummaryLifecycle implements OnApplicationShutdown {
+  constructor(@Inject(RIDE_SUMMARY) private readonly summary: { store: RideSummaryStore } | null) {}
+  async onApplicationShutdown(): Promise<void> {
+    await this.summary?.store.close();
   }
 }
 
@@ -116,6 +125,9 @@ export async function createApp(
         ),
       }
     : null;
+  const summary = accounts
+    ? { verifier: accounts.verifier, store: new RideSummaryStore(config.databaseUrl, logger) }
+    : null;
   const app = await NestFactory.create(
     {
       module: AppModule,
@@ -126,6 +138,7 @@ export async function createApp(
         RouteController,
         LocationController,
         StatusLinkController,
+        RideSummaryController,
       ],
       providers: [
         { provide: DATABASE_HEALTH, useValue: database },
@@ -136,6 +149,8 @@ export async function createApp(
         RideLifecycle,
         { provide: STATUS_LINKS, useValue: statusLinks },
         StatusLinkLifecycle,
+        { provide: RIDE_SUMMARY, useValue: summary },
+        RideSummaryLifecycle,
         HealthGateway,
         LocationGateway,
       ],
