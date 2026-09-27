@@ -354,6 +354,11 @@ function Lobby({
           Location sharing & live status →
         </Link>
       )}
+      {snapshot?.ride.state === 'active' && (
+        <Link href={{ pathname: './status-links', params: { id } }} style={styles.link}>
+          Share my status with a private link →
+        </Link>
+      )}
       {snapshot && (
         <Link href={{ pathname: '/route', params: { id } }} style={styles.link}>
           View or plan the route →
