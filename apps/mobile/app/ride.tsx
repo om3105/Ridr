@@ -317,6 +317,11 @@ function Lobby({
           View your recorded trail →
         </Link>
       )}
+      {management?.ride.state === 'ended' && (
+        <Link href={{ pathname: './summary', params: { id } }} style={styles.link}>
+          View your ride summary →
+        </Link>
+      )}
       {management && (
         <>
           {management.ride.state === 'ended' && (

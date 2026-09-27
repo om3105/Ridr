@@ -34,6 +34,7 @@ export default function RootLayout() {
           <Stack.Screen name="route" options={{ title: 'Ride route' }} />
           <Stack.Screen name="sharing" options={{ title: 'Location sharing' }} />
           <Stack.Screen name="status-links" options={{ title: 'Share my status' }} />
+          <Stack.Screen name="summary" options={{ title: 'Ride summary' }} />
           <Stack.Screen name="ride" options={{ title: 'Your ride' }} />
         </Stack>
       </RideProvider>

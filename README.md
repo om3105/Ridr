@@ -10,6 +10,8 @@ The plan targets a 35-working-day beta, assuming two developers and part-time de
 
 [Day 20](docs/day-20/README.md) adds owner-controlled private status links and an account-free, short-lease viewer. A public HTTPS viewer origin and recipient/device acceptance checks are still needed before this can be treated as a deployed safety feature.
 
+[Day 21](docs/day-21/README.md) adds a participant-only post-ride summary with recorded distance, elapsed pace, a disconnected route trace and explicit tracking gaps. The history index and photos remain scheduled for later milestones.
+
 ## Planning documents
 
 - [Day 1 overview](docs/day-01/README.md)
@@ -62,6 +64,8 @@ Follow [AGENTS.md](AGENTS.md). Implement one logical milestone at a time, verify
 Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`. With the dedicated test database running and migrated, run `NODE_ENV=test npm run test:database`, `NODE_ENV=test npm run test:profiles --workspace @ridr/api`, `NODE_ENV=test npm run test:rides --workspace @ridr/api` and `NODE_ENV=test npm run test:management --workspace @ridr/api`. After local Auth setup, run `NODE_ENV=test npm run test:auth` for actual email verification, password recovery and session revocation. The build compiles the API and exports mobile/web bundles; native compilation is separate. The Day 2 and Day 3 standalone design/contract checks remain available in their handoffs. See the [Day 12 verification record](docs/day-12/README.md#verification--2026-09-24) for current results and limitations.
 
 For status sharing, run `NODE_ENV=test npm run test:status --workspace @ridr/api` against the local test database. Set `STATUS_VIEWER_ORIGIN` to the public HTTPS origin serving the API's status routes before production deployment.
+
+For post-ride summaries, run `NODE_ENV=test npm run test:summary --workspace @ridr/api` against the local test database.
 
 ## Local artifacts
 
