@@ -10,7 +10,9 @@ The plan targets a 35-working-day beta, assuming two developers and part-time de
 
 [Day 20](docs/day-20/README.md) adds owner-controlled private status links and an account-free, short-lease viewer. A public HTTPS viewer origin and recipient/device acceptance checks are still needed before this can be treated as a deployed safety feature.
 
-[Day 21](docs/day-21/README.md) adds a participant-only post-ride summary with recorded distance, elapsed pace, a disconnected route trace and explicit tracking gaps. The history index and photos remain scheduled for later milestones.
+[Day 21](docs/day-21/README.md) adds a participant-only post-ride summary with recorded distance, elapsed pace, a disconnected route trace and explicit tracking gaps.
+
+[Day 22](docs/day-22/README.md) adds a paginated Home → History → Summary flow for the signed-in participant's completed rides, with a consistent 90-day window and account-scoped data. Photos remain scheduled for a later milestone.
 
 ## Planning documents
 
@@ -66,6 +68,8 @@ Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`. With t
 For status sharing, run `NODE_ENV=test npm run test:status --workspace @ridr/api` against the local test database. Set `STATUS_VIEWER_ORIGIN` to the public HTTPS origin serving the API's status routes before production deployment.
 
 For post-ride summaries, run `NODE_ENV=test npm run test:summary --workspace @ridr/api` against the local test database.
+
+For the ride history index, run `NODE_ENV=test npm run test:history --workspace @ridr/api` against the local test database.
 
 ## Local artifacts
 

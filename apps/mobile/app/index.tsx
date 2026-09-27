@@ -70,6 +70,9 @@ export default function HomeScreen() {
               <Link href="/rides" style={styles.link}>
                 Your rides →
               </Link>
+              <Link href="/history" style={styles.link}>
+                Ride history →
+              </Link>
               <Link href="/create" style={styles.link}>
                 Create a ride →
               </Link>

@@ -4,6 +4,7 @@ import { AppState, Text, View } from 'react-native';
 import { Button, Notice, Page, styles } from '../src/auth/components';
 import GroupMap from '../src/group-map/GroupMap';
 import { RideAccess, useRides } from '../src/rides/provider';
+import { RideError } from '../src/rides/api';
 import { getRideSummary, summaryTraceGeometry, type RideSummary } from '../src/summary/api';
 
 export default function SummaryScreen() {
@@ -40,7 +41,13 @@ function Summary({ rideId }: { rideId: string }) {
       setMessage('Late eligible uploads may update this summary. Refresh to check again.');
     } catch (error) {
       setSummary(null);
-      setMessage(error instanceof Error ? error.message : 'Your ride summary is unavailable.');
+      setMessage(
+        error instanceof RideError && error.code === 'not_found'
+          ? 'This ride summary was removed or is unavailable.'
+          : error instanceof Error
+            ? error.message
+            : 'Your ride summary is unavailable.',
+      );
     } finally {
       setBusy(false);
     }
@@ -135,6 +142,9 @@ function Summary({ rideId }: { rideId: string }) {
         </>
       )}
       <Button label="Refresh summary" secondary busy={busy} onPress={() => void refresh()} />
+      <Link href="/history" style={styles.link}>
+        Back to history →
+      </Link>
       <Link
         href={{ pathname: '/ride', params: { id: rideId, view: 'controls' } }}
         style={styles.link}

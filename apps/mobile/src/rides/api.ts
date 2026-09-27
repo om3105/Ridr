@@ -281,7 +281,9 @@ async function responseError(
   if (response.status === 410)
     return new RideError(
       'expired',
-      'This invitation has expired. Ask the leader for a new invitation.',
+      code === 'HISTORY_EXPIRED'
+        ? 'This ride summary expired after 90 days.'
+        : 'This invitation has expired. Ask the leader for a new invitation.',
     );
   if (response.status === 409 && code === 'RIDE_FULL')
     return new RideError(
