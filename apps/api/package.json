@@ -16,7 +16,8 @@
     "test:rides": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/rides.integration.js",
     "test:management": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/ride-management.integration.js",
     "test:status": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/status-links.integration.js",
-    "test:summary": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/ride-summary.integration.js"
+    "test:summary": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/ride-summary.integration.js",
+    "test:history": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/ride-history.integration.js"
   },
   "dependencies": {
     "@nestjs/common": "11.2.3",

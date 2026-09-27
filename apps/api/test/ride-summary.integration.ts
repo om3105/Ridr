@@ -156,13 +156,19 @@ test('ended summary is own-only, reflects late history and expires at 90 days', 
         (event) => event.memberId === otherMember && event.kind === 'left',
       ),
     );
+    const expiredStart = new Date(Date.now() - 92 * 86400000);
+    const expiredEnd = new Date(Date.now() - 91 * 86400000);
     await pool.query(
       `UPDATE ridr.rides SET created_at=$2::timestamptz - interval '1 minute',started_at=$2,ended_at=$3 WHERE id=$1`,
-      [ride, new Date(Date.now() - 92 * 86400000), new Date(Date.now() - 91 * 86400000)],
+      [ride, expiredStart, expiredEnd],
+    );
+    await pool.query(
+      `UPDATE ridr.memberships SET joined_at=$2::timestamptz - interval '1 minute',left_at=$3::timestamptz - interval '10 minutes' WHERE id=$1`,
+      [ownerMember, expiredStart, expiredEnd],
     );
     await assert.rejects(
       store.read(account(owner), ride),
-      (error: unknown) => error instanceof ApiError && error.code === 'NOT_FOUND',
+      (error: unknown) => error instanceof ApiError && error.code === 'HISTORY_EXPIRED',
     );
   } finally {
     await client.query('ROLLBACK').catch(() => undefined);
