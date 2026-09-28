@@ -44,6 +44,7 @@ The plan targets a 35-working-day beta, assuming two developers and part-time de
 - [Day 15 offline recovery integration](docs/day-15/README.md)
 - [Day 23 completed-ride photos and verification](docs/day-23/README.md)
 - [Day 24 sponsored-card rules and verification](docs/day-24/README.md)
+- [Revised Days 26–35 standalone Android and offline plan](docs/days-26-35-standalone-android-plan.md)
 
 These documents cover all 34 source functional requirements, 15 supporting items, and 25 planned acceptance scenarios. Planned checks are not represented as completed app tests.
 
