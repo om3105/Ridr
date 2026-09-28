@@ -16,6 +16,8 @@ The plan targets a 35-working-day beta, assuming two developers and part-time de
 
 [Day 23](docs/day-23/README.md) adds private, validated photos pinned to completed ride routes, participant viewing, retryable uploads and author-only removal.
 
+[Day 24](docs/day-24/README.md) adds restricted native sponsored-card placements, with server-checked active-ride and ad-free suppression. No sponsor is configured by default.
+
 ## Planning documents
 
 - [Day 1 overview](docs/day-01/README.md)
@@ -41,6 +43,7 @@ The plan targets a 35-working-day beta, assuming two developers and part-time de
 - [Day 14 quick presets and voice notes](docs/day-14/README.md)
 - [Day 15 offline recovery integration](docs/day-15/README.md)
 - [Day 23 completed-ride photos and verification](docs/day-23/README.md)
+- [Day 24 sponsored-card rules and verification](docs/day-24/README.md)
 
 These documents cover all 34 source functional requirements, 15 supporting items, and 25 planned acceptance scenarios. Planned checks are not represented as completed app tests.
 
@@ -75,6 +78,8 @@ For post-ride summaries, run `NODE_ENV=test npm run test:summary --workspace @ri
 For the ride history index, run `NODE_ENV=test npm run test:history --workspace @ridr/api` against the local test database.
 
 For completed-ride photos, run `NODE_ENV=test npm run test:photos --workspace @ridr/api` against the local test database. A new native build is required after installing the image processing module; set `PHOTO_MEDIA_DIR` to a durable private directory for deployed storage.
+
+For sponsored-card eligibility, run `NODE_ENV=test npm run test:sponsored --workspace @ridr/api` against the local test database. Configure all four `SPONSORED_CARD_*` values in `.env` only after approving a sponsor; with no values, the app shows no ad.
 
 ## Local artifacts
 

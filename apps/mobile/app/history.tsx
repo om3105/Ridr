@@ -7,6 +7,7 @@ import { getRideHistory, type HistoryItem } from '../src/history/api';
 import { RideError } from '../src/rides/api';
 import { RideAccess, useRides } from '../src/rides/provider';
 import { useScreenTask } from '../src/rides/use-screen-task';
+import SponsoredCard from '../src/sponsored/SponsoredCard';
 
 export default function HistoryScreen() {
   const auth = useAuth();
@@ -70,6 +71,7 @@ function HistoryList() {
         Completed rides you joined in the last 90 days. Each distance and pace is calculated from
         your own recorded location.
       </Text>
+      <SponsoredCard placement="history" />
       {!!message && <Notice>{message}</Notice>}
       {loaded && items.length === 0 && (
         <Notice>No completed rides are available in your last 90 days.</Notice>

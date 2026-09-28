@@ -6,6 +6,7 @@ import { apiUrl, checkConnection, type ConnectionResult } from '../src/connectio
 import { Button, Notice, Page, styles } from '../src/auth/components';
 import { useAuth } from '../src/auth/provider';
 import { colors } from '../src/theme';
+import SponsoredCard from '../src/sponsored/SponsoredCard';
 
 export default function HomeScreen() {
   const auth = useAuth();
@@ -89,6 +90,7 @@ export default function HomeScreen() {
                 Edit your profile →
               </Link>
             </View>
+            <SponsoredCard placement="home" />
             <Button
               label="Sign out"
               secondary
