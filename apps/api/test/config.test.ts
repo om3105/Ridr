@@ -98,7 +98,14 @@ test('rejects missing or invalid database URLs without including secrets in erro
   }
 });
 
-test('auth configuration is optional but complete when enabled, with shared secrets forbidden in production', () => {
+test('production requires hosted auth and a session-check connection', () => {
+  assert.throws(
+    () => readConfig({ ...valid, NODE_ENV: 'production', STATUS_VIEWER_ORIGIN: 'https://viewer.test' }),
+    /Production requires SUPABASE_AUTH_URL and AUTH_DATABASE_URL/,
+  );
+});
+
+test('auth configuration is optional outside production but complete when enabled, with shared secrets forbidden in production', () => {
   const local = {
     ...valid,
     SUPABASE_AUTH_URL: 'http://127.0.0.1:9999',

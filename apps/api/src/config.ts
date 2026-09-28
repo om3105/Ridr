@@ -164,6 +164,9 @@ export function readConfig(env: NodeJS.ProcessEnv): ApiConfig {
       'STATUS_VIEWER_ORIGIN must be a plain HTTP(S) origin; production requires HTTPS.',
     );
   }
+  if (environment === 'production' && !auth) {
+    throw new Error('Production requires SUPABASE_AUTH_URL and AUTH_DATABASE_URL.');
+  }
   const sponsoredValues = [env.SPONSORED_CARD_ID, env.SPONSORED_CARD_TITLE,
     env.SPONSORED_CARD_DESCRIPTION, env.SPONSORED_CARD_URL];
   let sponsoredCard: ApiConfig['sponsoredCard'];
