@@ -1,8 +1,10 @@
 import { existsSync } from 'node:fs';
 import type { ExpoConfig } from 'expo/config';
+import { assertStandaloneConfiguration } from './standalone-config.ts';
 
 const isDevelopment = process.env.APP_VARIANT !== 'production';
 const googleServicesFile = process.env.GOOGLE_SERVICES_JSON ?? './google-services.json';
+if (!isDevelopment) assertStandaloneConfiguration(process.env);
 
 const config: ExpoConfig = {
   name: isDevelopment ? 'Ridr Dev' : 'Ridr',
@@ -11,6 +13,7 @@ const config: ExpoConfig = {
   extra: { eas: { projectId: '324bae2b-d412-4d75-8d66-af4f13ef778f' } },
   version: '0.1.0',
   scheme: isDevelopment ? 'ridr-dev' : 'ridr',
+  icon: './assets/icon.png',
   orientation: 'portrait',
   userInterfaceStyle: 'light',
   backgroundColor: '#ffffff',
@@ -21,8 +24,8 @@ const config: ExpoConfig = {
   },
   android: {
     package: isDevelopment ? 'com.ridr.app.dev' : 'com.ridr.app',
-    ...(isDevelopment &&
-    (process.env.GOOGLE_SERVICES_JSON || existsSync(googleServicesFile))
+    versionCode: 1,
+    ...((process.env.GOOGLE_SERVICES_JSON || (isDevelopment && existsSync(googleServicesFile)))
       ? { googleServicesFile }
       : {}),
     permissions: [],
@@ -30,7 +33,7 @@ const config: ExpoConfig = {
   web: { bundler: 'metro', output: 'static', name: 'Ridr development preview' },
   plugins: [
     'expo-router',
-    'expo-dev-client',
+    ...(isDevelopment ? ['expo-dev-client'] : []),
     'expo-notifications',
     [
       'expo-audio',

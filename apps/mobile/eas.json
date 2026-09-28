@@ -6,6 +6,13 @@
       "distribution": "internal",
       "env": { "APP_VARIANT": "development" },
       "android": { "buildType": "apk" }
+    },
+    "standalone": {
+      "developmentClient": false,
+      "distribution": "internal",
+      "environment": "preview",
+      "env": { "APP_VARIANT": "production" },
+      "android": { "buildType": "apk" }
     }
   }
 }
