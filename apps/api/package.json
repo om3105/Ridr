@@ -18,7 +18,8 @@
     "test:status": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/status-links.integration.js",
     "test:summary": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/ride-summary.integration.js",
     "test:history": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/ride-history.integration.js",
-    "test:photos": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/ride-photos.integration.js"
+    "test:photos": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/ride-photos.integration.js",
+    "test:sponsored": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/sponsored.integration.js"
   },
   "dependencies": {
     "@nestjs/common": "11.2.3",

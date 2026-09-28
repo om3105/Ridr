@@ -31,6 +31,25 @@ test('accepts explicit runtime settings and deduplicates exact origins', () => {
   assert.deepEqual(config.corsOrigins, ['http://localhost:8081', 'https://test.example']);
 });
 
+test('sponsored card is opt-in and requires approved bounded HTTPS content', () => {
+  assert.equal(readConfig(valid).sponsoredCard, undefined);
+  const configured = { ...valid, SPONSORED_CARD_ID: 'test_partner',
+    SPONSORED_CARD_TITLE: 'Local bicycle repair',
+    SPONSORED_CARD_DESCRIPTION: 'Book a tune-up.',
+    SPONSORED_CARD_URL: 'https://sponsor.example/ridr' };
+  assert.deepEqual(readConfig(configured).sponsoredCard, {
+    id: 'test_partner', title: 'Local bicycle repair',
+    description: 'Book a tune-up.', url: 'https://sponsor.example/ridr',
+  });
+  assert.equal(readConfig({ ...configured, SPONSORED_CARD_URL: 'https://sponsor.example' })
+    .sponsoredCard?.url, 'https://sponsor.example/');
+  for (const value of ['', 'http://sponsor.example', 'https://name:pass@sponsor.example',
+    'https://sponsor.example/#fragment'])
+    assert.throws(() => readConfig({ ...configured, SPONSORED_CARD_URL: value }), /SPONSORED_CARD/);
+  assert.throws(() => readConfig({ ...configured, SPONSORED_CARD_TITLE: 'a'.repeat(81) }), /SPONSORED_CARD/);
+  assert.throws(() => readConfig({ ...valid, SPONSORED_CARD_ID: 'incomplete' }), /SPONSORED_CARD/);
+});
+
 test('rejects invalid ports, wildcard origins, and ambiguous configuration', () => {
   for (const port of ['0', '65536', '-1', '3000.5', '1e3', '']) {
     assert.throws(() => readConfig({ ...valid, API_PORT: port }), /API_PORT/);

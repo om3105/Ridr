@@ -11,6 +11,7 @@ export interface ApiConfig {
   auth?: AuthConfig;
   pushTokenKey?: string;
   statusViewerOrigin: string;
+  sponsoredCard?: { id: string; title: string; description: string; url: string };
 }
 
 export interface AuthConfig {
@@ -163,6 +164,21 @@ export function readConfig(env: NodeJS.ProcessEnv): ApiConfig {
       'STATUS_VIEWER_ORIGIN must be a plain HTTP(S) origin; production requires HTTPS.',
     );
   }
+  const sponsoredValues = [env.SPONSORED_CARD_ID, env.SPONSORED_CARD_TITLE,
+    env.SPONSORED_CARD_DESCRIPTION, env.SPONSORED_CARD_URL];
+  let sponsoredCard: ApiConfig['sponsoredCard'];
+  if (sponsoredValues.some((value) => value !== undefined)) {
+    const [id, title, description, destination] = sponsoredValues;
+    let url: URL;
+    try {
+      url = new URL(destination ?? '');
+      if (!id || !/^[a-z0-9][a-z0-9_-]{0,39}$/.test(id) ||
+          !title?.trim() || title.length > 80 || !description?.trim() || description.length > 200 ||
+          !destination || destination !== destination.trim() ||
+          url.protocol !== 'https:' || url.username || url.password || url.hash) throw new Error();
+    } catch { throw new Error('SPONSORED_CARD_* must provide a short ID, title, description and HTTPS URL.'); }
+    sponsoredCard = { id: id!, title: title!.trim(), description: description!.trim(), url: url.href };
+  }
   return {
     ...(pushTokenKey ? { pushTokenKey } : {}),
     environment: environment as ApiConfig['environment'],
@@ -172,6 +188,7 @@ export function readConfig(env: NodeJS.ProcessEnv): ApiConfig {
     corsOrigins: [...new Set(corsOrigins)],
     rideLimits,
     statusViewerOrigin,
+    ...(sponsoredCard ? { sponsoredCard } : {}),
     routing,
     ...(auth ? { auth } : {}),
   };
