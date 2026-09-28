@@ -60,6 +60,7 @@ export class SponsoredController {
   @Get('sponsored-card')
   async read(@Req() request: Request, @Query() query: Record<string, unknown>,
     @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
     if (!this.services) throw unavailable();
     const account = await this.services.verifier.verify(request.headers.authorization);
     const placement = query.placement;

@@ -30,7 +30,7 @@ export default function SponsoredCard({ placement, rideId, summaryLoaded = false
     };
     const load = async (reset: boolean) => {
       if (reset) clear();
-      else { sequence++; controller?.abort(); }
+      else { sequence++; controller?.abort(); setLoaded(null); }
       if (!eligible || !token || AppState.currentState !== 'active') return;
       const request = sequence;
       controller = new AbortController();

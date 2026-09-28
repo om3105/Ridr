@@ -20,6 +20,8 @@
     "db:up": "docker compose up -d --wait database",
     "db:migrate": "node --env-file=.env scripts/db-migrate.mjs",
     "test:database": "node --env-file=.env scripts/db-check.mjs",
+    "test:ad-entitlement": "node --test scripts/ad-entitlement.test.mjs",
+    "ad-entitlement": "node --env-file=.env scripts/ad-entitlement.mjs",
     "monitor": "node --env-file=.env scripts/monitor.mjs",
     "setup": "node scripts/setup.mjs",
     "auth:setup": "node scripts/auth-setup.mjs",

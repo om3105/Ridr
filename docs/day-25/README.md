@@ -1,0 +1,23 @@
+# Day 25 — ad-free test entitlement and checkpoint
+
+The P1 beta entitlement is controlled by the private database, not a phone setting or a purchase screen. An operator can provision an active test account for a bounded period, and revoke it. The sponsored-card API checks the current database entitlement for every request, rejects client-supplied eligibility fields, and returns `Cache-Control: no-store`. The native placement stays hidden when the loaded profile says ad-free, the account is changing, or entitlement status is unknown. It clears a displayed card while each periodic recheck is pending. The app still needs a timely profile refresh to learn about an entitlement changed on another system; a configured sponsor therefore requires a device test of mid-display activation before release. No sponsor is configured by default.
+
+For a local test account, use `npm run ad-entitlement -- grant <user-uuid> <UTC-expiry>` and `npm run ad-entitlement -- revoke <user-uuid>`. For example, an expiry is `2027-01-01T00:00:00Z`. The command uses the private `MIGRATION_DATABASE_URL` from `.env`, verifies it connected as `ridr_migrator`, accepts only an existing active account, and limits grants to one year. Run it only in an operator environment; the connection string must never be copied into the app or committed. Refresh the account profile to see the new state. The supported beta benefit is ad suppression only. There is no subscription checkout, payment, refund, paid history or upgrade offer; FR-ADV-06 remains **partially satisfied** until v1.1.
+
+## Conditional advertising decision
+
+FR-ADV-04 contextual targeting stays **disabled**. There is no approved coarse-area consent flow or content/provider contract. The Day 24 card, when explicitly configured, is non-personalized. It sends no raw trail, precise position, paired identity or contacts to an advertiser. An opt-out requires no additional action because no targeting is active.
+
+FR-ADV-05 rewarded ads stay **not shipped**. The product owner has not chosen a non-core benefit, and there is no completion-verification or idempotent grant service. No reward offer, fullscreen ad, or forced interruption is shown. Core ride, safety and the existing 90-day history remain available regardless of ads. Enabling rewards later requires a separate scope decision, stationary and no-active-ride eligibility, server-verified completion, and refusal/no-fill/duplicate acceptance tests.
+
+## Day 25 release checkpoint
+
+This is an engineering checkpoint, not a public-release approval. The codebase has implementations for the Day 1 included modules through Day 24, including accounts, groups, routes, location, chat, safety controls, summaries, history, photos and restricted sponsored cards. Passing focused tests does not close all P0/P1 acceptance: the [release matrix](../day-01/acceptance-and-release.md) still requires device, multi-member, offline, latency, battery, accessibility, load and recovery evidence. In particular, the Day 19 handoff records that physical recipient SOS delivery was not measured after the requested phone-test skip. Day 21–24 handoffs list further device and deployment checks. These are open release gates, not silently waived by this checkpoint.
+
+The launch market, hosting region, public store availability, durable private media storage and production routing dataset are still owner/deployment decisions. Pune is a routing test region, not a launch-market decision. No paid routing host or public store release is authorized by this checkpoint. Decide those choices, deploy to staging, then run the Day 30–35 integrated and field gates before any beta release claim.
+
+## Verification
+
+Run `npm run test:ad-entitlement` for input and privileged-role checks. With the local test database running, run `NODE_ENV=test npm run test:sponsored --workspace @ridr/api` to exercise the operator command and current-DB ad suppression. Run the workspace API/mobile tests, type checks, lint and build before handing this milestone off. An Android and iOS device check with a configured test card is still required to measure the entitlement-activation window and visual/accessibility behavior. Until that passes, keep the sponsor settings unset in release environments.
+
+Day 25 local results: the entitlement unit tests (2), sponsored database/HTTP integration (1), API suite (50), mobile suite (111), workspace type checks and lint passed. The API build and Android/iOS/web export passed. The first sandboxed full-suite run could not open local test sockets; the permitted rerun passed. No physical-device ad or deployment acceptance was performed.

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
+import { promisify } from 'node:util';
 import { Pool } from 'pg';
 import { unauthenticated } from '../src/api-errors.js';
 import type { AccountServices } from '../src/accounts.js';
@@ -9,6 +11,8 @@ import type { TokenVerifier, VerifiedAccount } from '../src/auth.js';
 import { readConfig } from '../src/config.js';
 import { OperationalLogger } from '../src/logging.js';
 import { SponsoredStore } from '../src/sponsored.js';
+
+const execFileAsync = promisify(execFile);
 
 test('sponsored content requires a current eligible account and permitted placement', async () => {
   assert.equal(process.env.NODE_ENV, 'test');
@@ -62,7 +66,10 @@ test('sponsored content requires a current eligible account and permitted placem
       const allowed = await fetch(`${origin}/v1/sponsored-card?placement=home`,
         { headers: { Authorization: 'Bearer owner' } });
       assert.equal(allowed.status, 200);
+      assert.equal(allowed.headers.get('cache-control'), 'no-store');
       assert.deepEqual((await allowed.json()).data, card);
+      assert.equal((await fetch(`${origin}/v1/sponsored-card?placement=home&adFree=false`,
+        { headers: { Authorization: 'Bearer owner' } })).status, 400);
       assert.equal((await fetch(`${origin}/v1/sponsored-card?placement=home`)).status, 401);
       const forbiddenPlacement = await fetch(`${origin}/v1/sponsored-card?placement=map`,
         { headers: { Authorization: 'Bearer owner' } });
@@ -89,9 +96,14 @@ test('sponsored content requires a current eligible account and permitted placem
         { headers: { Authorization: 'Bearer owner' } });
       assert.equal((await suppressed.json()).data, null);
       await fixture.query('DELETE FROM ridr.active_memberships WHERE user_id=$1', [user]);
-      await fixture.query("INSERT INTO ridr.ad_entitlements(user_id,ad_free_until) VALUES ($1,clock_timestamp()+interval '1 day')", [user]);
+      assert.ok(process.env.MIGRATION_DATABASE_URL);
+      const expiry = new Date(Date.now() + 86400000).toISOString();
+      await execFileAsync(process.execPath, ['../../scripts/ad-entitlement.mjs', 'grant', user, expiry],
+        { env: process.env });
       assert.equal(await store.read(account, 'home'), null);
-      await fixture.query('DELETE FROM ridr.ad_entitlements WHERE user_id=$1', [user]);
+      await execFileAsync(process.execPath, ['../../scripts/ad-entitlement.mjs', 'revoke', user],
+        { env: process.env });
+      assert.deepEqual(await store.read(account, 'home'), card);
       await fixture.query("UPDATE ridr.profiles SET account_state='deleting',deleted_at=clock_timestamp() WHERE id=$1", [user]);
       assert.equal(await store.read(account, 'home'), null);
     } finally { await app.close(); }
