@@ -23,6 +23,7 @@ export interface RideSummary {
     shownPoints: number;
     previewComplete: boolean;
   };
+  routePoints: { lat: number; lon: number }[];
   memberEvents: {
     memberId: string;
     displayName: string;
@@ -102,6 +103,9 @@ export function parseRideSummary(value: unknown, rideId: string): RideSummary {
     row.trace.segments.reduce((count, segment) => count + segment.length, 0) !==
       row.trace.shownPoints ||
     typeof row.trace.previewComplete !== 'boolean' ||
+    !Array.isArray(row.routePoints) ||
+    row.routePoints.length > 10000 ||
+    row.routePoints.some((p) => !point(p)) ||
     !Array.isArray(row.memberEvents) ||
     row.memberEvents.length > 200 ||
     typeof row.memberEventsComplete !== 'boolean' ||

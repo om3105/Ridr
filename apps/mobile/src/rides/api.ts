@@ -248,6 +248,10 @@ async function responseError(
       'invalid',
       'Record an AAC voice note of 30 seconds or less, then try again.',
     );
+  if (response.status === 422 && code === 'INVALID_PHOTO')
+    return new RideError('invalid', 'Choose a JPEG, PNG or WebP photo no larger than 10 MB.');
+  if (response.status === 422 && code === 'INVALID_PHOTO_POINT')
+    return new RideError('invalid', 'Select a point on the completed ride route.');
   if (routeRequest && response.status === 413)
     return new RideError(
       'invalid',

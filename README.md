@@ -12,7 +12,9 @@ The plan targets a 35-working-day beta, assuming two developers and part-time de
 
 [Day 21](docs/day-21/README.md) adds a participant-only post-ride summary with recorded distance, elapsed pace, a disconnected route trace and explicit tracking gaps.
 
-[Day 22](docs/day-22/README.md) adds a paginated Home → History → Summary flow for the signed-in participant's completed rides, with a consistent 90-day window and account-scoped data. Photos remain scheduled for a later milestone.
+[Day 22](docs/day-22/README.md) adds a paginated Home → History → Summary flow for the signed-in participant's completed rides, with a consistent 90-day window and account-scoped data.
+
+[Day 23](docs/day-23/README.md) adds private, validated photos pinned to completed ride routes, participant viewing, retryable uploads and author-only removal.
 
 ## Planning documents
 
@@ -38,6 +40,7 @@ The plan targets a 35-working-day beta, assuming two developers and part-time de
 - [Day 13 ride chat and message pins](docs/day-13/README.md)
 - [Day 14 quick presets and voice notes](docs/day-14/README.md)
 - [Day 15 offline recovery integration](docs/day-15/README.md)
+- [Day 23 completed-ride photos and verification](docs/day-23/README.md)
 
 These documents cover all 34 source functional requirements, 15 supporting items, and 25 planned acceptance scenarios. Planned checks are not represented as completed app tests.
 
@@ -70,6 +73,8 @@ For status sharing, run `NODE_ENV=test npm run test:status --workspace @ridr/api
 For post-ride summaries, run `NODE_ENV=test npm run test:summary --workspace @ridr/api` against the local test database.
 
 For the ride history index, run `NODE_ENV=test npm run test:history --workspace @ridr/api` against the local test database.
+
+For completed-ride photos, run `NODE_ENV=test npm run test:photos --workspace @ridr/api` against the local test database. A new native build is required after installing the image processing module; set `PHOTO_MEDIA_DIR` to a durable private directory for deployed storage.
 
 ## Local artifacts
 

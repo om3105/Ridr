@@ -17,7 +17,8 @@
     "test:management": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/ride-management.integration.js",
     "test:status": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/status-links.integration.js",
     "test:summary": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/ride-summary.integration.js",
-    "test:history": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/ride-history.integration.js"
+    "test:history": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/ride-history.integration.js",
+    "test:photos": "tsc -p tsconfig.test.json && node --env-file=../../.env --test dist-test/test/ride-photos.integration.js"
   },
   "dependencies": {
     "@nestjs/common": "11.2.3",
@@ -31,6 +32,7 @@
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "saxes": "6.0.0",
+    "sharp": "0.35.5",
     "socket.io": "4.8.3"
   },
   "devDependencies": {

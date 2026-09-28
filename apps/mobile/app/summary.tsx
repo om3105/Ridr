@@ -6,6 +6,7 @@ import GroupMap from '../src/group-map/GroupMap';
 import { RideAccess, useRides } from '../src/rides/provider';
 import { RideError } from '../src/rides/api';
 import { getRideSummary, summaryTraceGeometry, type RideSummary } from '../src/summary/api';
+import PhotoSection from '../src/photos/PhotoSection';
 
 export default function SummaryScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -139,6 +140,7 @@ function Summary({ rideId }: { rideId: string }) {
           <Text style={styles.detail}>
             This summary is available until {new Date(summary.expiresAt).toLocaleDateString()}.
           </Text>
+          <PhotoSection key={`${summary.rideId}-${summary.memberId}`} summary={summary} />
         </>
       )}
       <Button label="Refresh summary" secondary busy={busy} onPress={() => void refresh()} />

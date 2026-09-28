@@ -32,6 +32,7 @@ const value = {
     shownPoints: 2,
     previewComplete: true,
   },
+  routePoints: [],
   memberEvents: [{ memberId, displayName: 'Rider', kind: 'sharing_stopped', at: stamp }],
   memberEventsComplete: true,
   updatedAt: stamp,
