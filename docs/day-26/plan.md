@@ -1,0 +1,11 @@
+# Day 26 plan — free-host feasibility and standalone build configuration
+
+Day 26 follows the revised [Days 26–35 contract](../days-26-35-standalone-android-plan.md). Its exit test still requires a hosted HTTPS API reached by a phone over mobile data; build configuration alone does not close the day.
+
+1. **Measure hosting feasibility.** Inventory Auth, NestJS/Socket.IO, private PostGIS, both Pune OSRM services, media, status viewer, push and signing. Treat Voroa as a candidate for a lightweight API and the existing Supabase project as a candidate for hosted PostGIS. Verify free capacity, database access model, resource use, backups, routing terms and no-card signup before selecting either. Record the operator and availability limits.
+2. **Choose a viable split.** Keep OSRM off a 512 MB/0.1 vCPU API instance. Plan a reviewed private-schema and role migration if Supabase hosts ride data, and durable authorized media storage outside an ephemeral container. If the proposed split cannot meet basic correctness, stop and document the blocker rather than inserting a placeholder endpoint.
+3. **Prepare a separate Android profile.** Use a stable production-style package ID and incrementing version code, bundle JavaScript, disable the development launcher and cleartext traffic, and reject missing or local-only endpoints before a standalone build.
+4. **Verify the hosted path when available.** Build a signed internal APK only with a real hosted HTTPS origin; install it on Android; disconnect USB and Metro; use mobile data to verify cold launch, readiness, a verified sign-in, an online map, and a ride read. Save the APK checksum and exact configuration/evidence.
+5. **Handover.** Mark each check pass, fail or blocked. Carry missing hosted infrastructure and device evidence forward as explicit Day 30 blockers; do not call a development-client APK a standalone candidate.
+
+The owner requires no cost, no payment card and production reliability. Host selection is unresolved: the no-card free path is only a capped beta candidate, with production approval still blocked by availability and safety evidence. Do not substitute a placeholder endpoint or claim the exit test passed. Preserve existing local changes outside this plan.
