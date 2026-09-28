@@ -6,6 +6,7 @@ import { Button, Field, Notice, Page, styles } from '../src/auth/components';
 import { useAuth } from '../src/auth/provider';
 import { ProfileError } from '../src/auth/profile-api';
 import { validateDisplayName } from '../src/auth/validation';
+import { PrimaryNavigation } from '../src/navigation/PrimaryNavigation';
 
 export default function ProfileScreen() {
   const auth = useAuth();
@@ -56,7 +57,7 @@ export default function ProfileScreen() {
 
   if (auth.state !== 'ready' || !auth.profile) return <Redirect href="/" />;
   return (
-    <Page>
+    <Page footer={<PrimaryNavigation active="profile" />}>
       <Text style={styles.eyebrow}>A NAME YOUR PEOPLE KNOW</Text>
       <Text accessibilityRole="header" style={styles.title}>
         Your profile.

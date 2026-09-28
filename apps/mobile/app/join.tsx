@@ -133,36 +133,40 @@ function JoinForm() {
   }
   return (
     <Page>
-      <Text style={styles.eyebrow}>FIND YOUR GROUP</Text>
       <Text accessibilityRole="header" style={styles.title}>
-        Join a ride.
+        Join a ride
       </Text>
-      <Field
-        label="Ride code or invite link"
-        value={input}
-        onChangeText={(value) => {
-          setInput(value);
-          setPreview(null);
-          setCredential(null);
-          setRole(null);
-          setMessage('');
-        }}
-        placeholder="Enter code or paste Ridr link"
-        autoCapitalize="none"
-        autoCorrect={false}
-        textContentType="none"
-        editable={!busy && !joining && !uncertain}
-      />
-      <Button
-        label={busy ? 'Checking invitation…' : 'Preview invitation'}
-        busy={busy}
-        disabled={joining || uncertain || (!input && !credential)}
-        onPress={() => {
-          if (!input && credential) void inspect(credential);
-          else previewInput(input);
-        }}
-      />
-      <InviteScanner disabled={busy || joining || uncertain} onScan={previewInput} />
+      <Text style={styles.detail}>
+        Enter your ten-character code, paste a Ridr link, or scan a QR invite.
+      </Text>
+      <View style={styles.card}>
+        <Field
+          label="Ride code or invite link"
+          value={input}
+          onChangeText={(value) => {
+            setInput(value);
+            setPreview(null);
+            setCredential(null);
+            setRole(null);
+            setMessage('');
+          }}
+          placeholder="Enter code or paste Ridr link"
+          autoCapitalize="none"
+          autoCorrect={false}
+          textContentType="none"
+          editable={!busy && !joining && !uncertain}
+        />
+        <Button
+          label={busy ? 'Checking invitation…' : 'Preview invitation'}
+          busy={busy}
+          disabled={joining || uncertain || (!input && !credential)}
+          onPress={() => {
+            if (!input && credential) void inspect(credential);
+            else previewInput(input);
+          }}
+        />
+        <InviteScanner disabled={busy || joining || uncertain} onScan={previewInput} />
+      </View>
       {!!message && <Notice>{message}</Notice>}
       {preview && (
         <View style={styles.card}>

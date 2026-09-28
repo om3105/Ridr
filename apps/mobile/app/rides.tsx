@@ -7,6 +7,7 @@ import { roleNames, transportNames } from '../src/rides/components';
 import type { RideMembership } from '../src/rides/models';
 import { RideAccess, useRides } from '../src/rides/provider';
 import { useScreenTask } from '../src/rides/use-screen-task';
+import { PrimaryNavigation } from '../src/navigation/PrimaryNavigation';
 
 export default function RidesScreen() {
   return (
@@ -62,21 +63,25 @@ function RideList() {
     }, [load]),
   );
   return (
-    <Page>
+    <Page footer={<PrimaryNavigation active="rides" />}>
       <Text accessibilityRole="header" style={styles.title}>
-        Your rides.
+        Your rides
       </Text>
       <Text style={styles.detail}>Create a group, join your people, or return to a ride.</Text>
-      <Link href="/create" style={styles.link}>
-        Create a ride →
-      </Link>
-      <Link href="/join" style={styles.link}>
-        Join with code, link or QR →
-      </Link>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Start together</Text>
+        <Link href="/create" style={styles.link}>
+          Create a ride →
+        </Link>
+        <Link href="/join" style={styles.link}>
+          Join with code, link or QR →
+        </Link>
+      </View>
       {!!message && <Notice>{message}</Notice>}
       {loaded && items.length === 0 && (
         <Notice>Your rides will appear here after you create or join one.</Notice>
       )}
+      {items.length > 0 && <Text style={styles.eyebrow}>YOUR GROUPS</Text>}
       {items.map(({ ride, membership }) => (
         <View key={ride.id} style={styles.card}>
           <Text style={styles.cardTitle}>{ride.name}</Text>

@@ -16,7 +16,10 @@ export default function RootLayout() {
             headerStyle: { backgroundColor: colors.paper },
             headerTintColor: colors.ink,
             headerShadowVisible: false,
-            contentStyle: { backgroundColor: colors.paper },
+            headerTitle: 'ridr.',
+            headerTitleStyle: { fontSize: 20, fontWeight: '800', color: colors.primary },
+            headerTitleAlign: 'center',
+            contentStyle: { backgroundColor: colors.canvas },
             headerBackTitle: 'Home',
           }}
         >

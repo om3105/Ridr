@@ -23,7 +23,7 @@ export function Choices<T extends string>({
   disabled?: boolean;
 }) {
   return (
-    <View style={{ gap: 8 }}>
+    <View style={{ gap: 10 }}>
       <Text style={styles.label}>{label}</Text>
       <View
         accessibilityRole="radiogroup"
@@ -37,21 +37,23 @@ export function Choices<T extends string>({
             disabled={disabled}
             onPress={() => onChange(option.value)}
             style={[
-              styles.button,
               {
                 flexGrow: 1,
-                backgroundColor: selected === option.value ? colors.primary : colors.paper,
+                flexBasis: options.length > 2 ? '29%' : '45%',
+                minHeight: 72,
+                paddingHorizontal: 8,
+                paddingVertical: 12,
+                borderWidth: 2,
+                borderRadius: 12,
+                justifyContent: 'center',
+                alignItems: 'center',
+                backgroundColor: selected === option.value ? colors.soft : colors.paper,
                 borderColor: selected === option.value ? colors.primary : colors.border,
                 opacity: disabled ? 0.65 : 1,
               },
             ]}
           >
-            <Text
-              style={[
-                styles.buttonText,
-                { color: selected === option.value ? colors.paper : colors.primary },
-              ]}
-            >
+            <Text style={[styles.buttonText, { color: colors.primary, textAlign: 'center' }]}>
               {option.label}
             </Text>
           </Pressable>

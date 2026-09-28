@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../theme';
 import { mapTilerStyle } from './policy';
 import { sampleMapStyle } from './sample-map';
+import { PrimaryNavigation } from '../navigation/PrimaryNavigation';
 
 const configuredStyle = mapTilerStyle(process.env.EXPO_PUBLIC_MAPTILER_KEY);
 
@@ -30,7 +31,7 @@ export default function MapScreen() {
 
   return (
     <SafeAreaView edges={['bottom']} style={styles.page}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>EXPLORE AT YOUR PACE</Text>
         <Text accessibilityRole="header" style={styles.title}>
           A little room to roam.
@@ -131,6 +132,7 @@ export default function MapScreen() {
           </Link>
         </View>
       </ScrollView>
+      <PrimaryNavigation active="map" />
     </SafeAreaView>
   );
 }

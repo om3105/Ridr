@@ -1,7 +1,7 @@
 import { randomUUID } from 'expo-crypto';
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Text } from 'react-native';
+import { Text, View } from 'react-native';
 import { Button, Field, Notice, Page, styles } from '../src/auth/components';
 import { validateDisplayName } from '../src/auth/validation';
 import { createRide, RideError } from '../src/rides/api';
@@ -59,31 +59,31 @@ function CreateForm() {
   }
   return (
     <Page>
-      <Text style={styles.eyebrow}>BRING YOUR GROUP TOGETHER</Text>
       <Text accessibilityRole="header" style={styles.title}>
-        Create a ride.
+        Create a ride
       </Text>
-      <Field
-        label="Ride name"
-        value={name}
-        onChangeText={setName}
-        placeholder="Sunday Loop"
-        editable={!busy && !uncertain}
-        autoCapitalize="sentences"
-      />
-      <Choices<Transport>
-        label="Ride type"
-        options={Object.entries(transportNames).map(([value, label]) => ({
-          value: value as Transport,
-          label,
-        }))}
-        selected={transport}
-        onChange={setTransport}
-        disabled={busy || uncertain}
-      />
-      <Text style={styles.detail}>
-        You’ll be the leader and a Rider. Invite your people from the lobby.
-      </Text>
+      <Text style={styles.detail}>Give your group a name and choose how you’ll travel.</Text>
+      <View style={styles.card}>
+        <Field
+          label="Ride name"
+          value={name}
+          onChangeText={setName}
+          placeholder="Sunday Loop"
+          editable={!busy && !uncertain}
+          autoCapitalize="sentences"
+        />
+        <Choices<Transport>
+          label="Ride type"
+          options={Object.entries(transportNames).map(([value, label]) => ({
+            value: value as Transport,
+            label,
+          }))}
+          selected={transport}
+          onChange={setTransport}
+          disabled={busy || uncertain}
+        />
+      </View>
+      <Text style={styles.detail}>You’ll lead this ride. Invite others from the ride lobby.</Text>
       <Notice>Creating a ride keeps location sharing off.</Notice>
       {!!message && <Notice>{message}</Notice>}
       {uncertain && (

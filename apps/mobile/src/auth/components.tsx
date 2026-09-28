@@ -14,16 +14,21 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../theme';
 
-export function Page({ children }: { children: ReactNode }) {
+export function Page({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
   return (
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
       <KeyboardAvoidingView
         style={styles.safe}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+        <ScrollView
+          style={styles.scroller}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scroll}
+        >
           <View style={styles.page}>{children}</View>
         </ScrollView>
+        {footer}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -34,12 +39,14 @@ export function Button({
   onPress,
   busy = false,
   secondary = false,
+  danger = false,
   disabled = false,
 }: {
   label: string;
   onPress(): void;
   busy?: boolean;
   secondary?: boolean;
+  danger?: boolean;
   disabled?: boolean;
 }) {
   const [focused, setFocused] = useState(false);
@@ -54,6 +61,7 @@ export function Button({
       style={({ pressed }) => [
         styles.button,
         secondary && styles.secondary,
+        danger && { backgroundColor: colors.alert, borderColor: colors.alert },
         (pressed || disabled || busy) && { opacity: 0.7 },
         focused && { borderColor: '#3283d5' },
       ]}
@@ -87,21 +95,36 @@ export function Notice({ children }: { children: ReactNode }) {
 }
 
 export const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.paper },
+  safe: { flex: 1, backgroundColor: colors.canvas },
+  scroller: { flex: 1 },
   scroll: { flexGrow: 1, alignItems: 'center' },
-  page: { width: '100%', maxWidth: 520, padding: 24, gap: 18 },
+  page: {
+    width: '100%',
+    maxWidth: 520,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 32,
+    gap: 14,
+  },
   eyebrow: { color: colors.primary, fontSize: 11, fontWeight: '700', letterSpacing: 1.3 },
   title: {
     color: colors.ink,
     fontWeight: '800',
-    fontSize: 34,
-    letterSpacing: -1.1,
-    lineHeight: 39,
+    fontSize: 28,
+    letterSpacing: -0.7,
+    lineHeight: 34,
   },
   detail: { color: colors.muted, fontSize: 15, lineHeight: 23 },
-  card: { borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 20, gap: 12 },
+  card: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 16,
+    padding: 16,
+    gap: 10,
+    backgroundColor: colors.paper,
+  },
   cardTitle: { fontSize: 21, color: colors.ink, fontWeight: '700', lineHeight: 27 },
-  notice: { backgroundColor: colors.soft, padding: 16, borderRadius: 12 },
+  notice: { backgroundColor: colors.soft, padding: 14, borderRadius: 12 },
   field: { gap: 8 },
   label: { fontSize: 14, fontWeight: '600', color: colors.ink },
   input: {

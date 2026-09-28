@@ -8,6 +8,7 @@ import { RideError } from '../src/rides/api';
 import { RideAccess, useRides } from '../src/rides/provider';
 import { useScreenTask } from '../src/rides/use-screen-task';
 import SponsoredCard from '../src/sponsored/SponsoredCard';
+import { PrimaryNavigation } from '../src/navigation/PrimaryNavigation';
 
 export default function HistoryScreen() {
   const auth = useAuth();
@@ -63,9 +64,9 @@ function HistoryList() {
   );
   useFocusEffect(useCallback(() => void load(), [load]));
   return (
-    <Page>
+    <Page footer={<PrimaryNavigation active="history" />}>
       <Text accessibilityRole="header" style={styles.title}>
-        Ride history.
+        Your rides
       </Text>
       <Text style={styles.detail}>
         Completed rides you joined in the last 90 days. Each distance and pace is calculated from
@@ -76,6 +77,7 @@ function HistoryList() {
       {loaded && items.length === 0 && (
         <Notice>No completed rides are available in your last 90 days.</Notice>
       )}
+      {items.length > 0 && <Text style={styles.eyebrow}>COMPLETED RIDES</Text>}
       {items.map((item) => (
         <View key={item.rideId} style={styles.card}>
           <Text style={styles.cardTitle}>{item.rideName}</Text>

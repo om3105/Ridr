@@ -6,6 +6,7 @@ export const colors = {
   primary: '#164d38',
   soft: '#edf3e9',
   border: '#c9d3c9',
+  alert: '#a6242f',
   warning: '#70510b',
   warningBackground: '#fff5d9',
 };

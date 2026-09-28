@@ -11,6 +11,7 @@ import { useRides } from '../rides/provider';
 import GroupMap from './GroupMap';
 import { projectGroup } from './model';
 import { useGroupLocations } from './use-group-locations';
+import { PrimaryNavigation } from '../navigation/PrimaryNavigation';
 export function GroupRideMap({
   id,
   name,
@@ -88,11 +89,12 @@ export function GroupRideMap({
     };
   }, [id, run, available]);
   return (
-    <Page>
+    <Page footer={<PrimaryNavigation active="rides" />}>
       <Text style={styles.eyebrow}>GROUP MAP</Text>
       <Text style={styles.title}>{name}</Text>
       <Button
         label="SOS — alert ride members"
+        danger
         onPress={() => {
           const position =
             ownPosition && Date.now() - Date.parse(ownPosition.recordedAt) <= 600000
@@ -109,6 +111,14 @@ export function GroupRideMap({
         View ride SOS alerts →
       </Link>
       <SosAlerts rideId={id} />
+      <GroupMap
+        data={group?.data ?? { type: 'FeatureCollection', features: [] }}
+        focus={focus}
+        pins={pins.flatMap((item) =>
+          item.coordinate ? [{ id: item.id, ...item.coordinate }] : [],
+        )}
+        onPinSelect={setChosen}
+      />
       {offline && (
         <Notice>
           Ride status is unconfirmed. Saved quick messages will be checked before sending when the
@@ -152,14 +162,6 @@ export function GroupRideMap({
           </Text>
         </View>
       ))}
-      <GroupMap
-        data={group?.data ?? { type: 'FeatureCollection', features: [] }}
-        focus={focus}
-        pins={pins.flatMap((item) =>
-          item.coordinate ? [{ id: item.id, ...item.coordinate }] : [],
-        )}
-        onPinSelect={setChosen}
-      />
       {chosen && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Chosen message pin</Text>
