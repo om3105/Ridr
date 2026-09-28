@@ -1,6 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Text } from 'react-native';
+import { Text, View } from 'react-native';
 import { Button, Field, Notice, Page, styles } from '../src/auth/components';
 import { validateDisplayName } from '../src/auth/validation';
 import {
@@ -111,14 +111,22 @@ function ContactForm() {
       <Text accessibilityRole="header" style={styles.title}>
         Emergency contact
       </Text>
+      <Text style={styles.detail}>Keep one trusted contact on your private account.</Text>
+      {contact && (
+        <View style={styles.card}>
+          <Text style={styles.eyebrow}>SAVED CONTACT</Text>
+          <Text style={styles.cardTitle}>{contact.name}</Text>
+          <Text style={styles.detail}>{contact.phone}</Text>
+        </View>
+      )}
       <Notice>
         This name and phone stay in your account. Pairing does not share them with your rider or
         group. Saving will not call or message this person.
       </Notice>
       {!!message && <Notice>{message}</Notice>}
-      <Button label="Refresh contact" secondary busy={busy} onPress={() => void work(refresh)} />
       {loaded && (
-        <>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>{contact ? 'Edit contact' : 'Add a contact'}</Text>
           <Field
             label="Contact name"
             value={name}
@@ -155,8 +163,9 @@ function ContactForm() {
               onPress={() => void work(remove)}
             />
           )}
-        </>
+        </View>
       )}
+      <Button label="Refresh contact" secondary busy={busy} onPress={() => void work(refresh)} />
     </Page>
   );
 }

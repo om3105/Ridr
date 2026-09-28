@@ -1,7 +1,7 @@
 import { randomUUID } from 'expo-crypto';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Text } from 'react-native';
+import { AppState, Text, View } from 'react-native';
 import { Button, Notice, Page, styles } from '../src/auth/components';
 import { getRideManagement, RideError } from '../src/rides/api';
 import type { RideManagement } from '../src/rides/models';
@@ -157,20 +157,16 @@ function Planner({ id }: { id: string }) {
   const visible = status && status.ride.state !== 'ended' && !status.membership.leftAt;
   return (
     <Page>
-      <Text style={styles.title}>Plan the way ahead</Text>
-      <Text style={styles.detail}>
-        Save a route before starting. Cycling rides use cycling roads; cars and motorcycles use
-        driving roads. Imported GPX points keep their original order.
+      <Text accessibilityRole="header" style={styles.title}>
+        Plan the route
       </Text>
+      <Text style={styles.detail}>Set your group’s route before the ride starts.</Text>
       {message !== '' && <Notice>{message}</Notice>}
-      <Button label="Refresh saved route" secondary disabled={busy} onPress={() => void load()} />
+      {!visible && (
+        <Button label="Refresh saved route" secondary disabled={busy} onPress={() => void load()} />
+      )}
       {visible && (
         <>
-          <Text style={styles.label}>
-            {saved
-              ? `Saved ${saved.source === 'gpx' ? 'GPX' : 'road route'} · revision ${saved.revision} · ${saved.points.length} points`
-              : 'No saved route yet'}
-          </Text>
           <RouteMap
             points={saved?.points ?? []}
             waypoints={draft.points}
@@ -193,6 +189,27 @@ function Planner({ id }: { id: string }) {
                   }
                 : undefined
             }
+          />
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>
+              {saved ? 'Route ready for your group' : 'No saved route yet'}
+            </Text>
+            {saved && (
+              <Text style={styles.detail}>
+                {saved.source === 'gpx' ? 'Imported GPX' : 'Road route'} · {saved.points.length}{' '}
+                points · revision {saved.revision}
+              </Text>
+            )}
+            <Text style={styles.detail}>
+              Cycling rides use cycling roads; cars and motorcycles use driving roads. GPX points
+              keep their original order.
+            </Text>
+          </View>
+          <Button
+            label="Refresh saved route"
+            secondary
+            disabled={busy}
+            onPress={() => void load()}
           />
           {saved && (
             <Text style={styles.detail}>
